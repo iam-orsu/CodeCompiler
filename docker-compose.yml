@@ -1,101 +1,44 @@
 services:
   nginx:
     image: nginx:alpine
-    container_name: runly_nginx
     ports:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - runly-net
+    env_file: .env
+    restart: unless-stopped
     depends_on:
-      - api
       - frontend
-    networks:
-      - runly-net
-    restart: unless-stopped
-
-  api:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: runly_api
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - PORT=4000
-    env_file:
-      - .env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - runly-net
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: runly_worker
-    command: npm run start:worker
-    env_file:
-      - .env
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - runly-net
-    restart: unless-stopped
+      - api
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: runly_frontend
-    env_file:
-      - .env
-    depends_on:
-      - api
     networks:
       - runly-net
+    env_file: .env
     restart: unless-stopped
 
-  db:
-    image: postgres:15-alpine
-    container_name: runly_db
-    environment:
-      POSTGRES_USER: ${DB_USER:-runly}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
-      POSTGRES_DB: ${DB_NAME:-runly_dev}
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-runly} -d ${DB_NAME:-runly_dev}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - runly-net
+    env_file: .env
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: runly_redis
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - runly-net
+    env_file: .env
     restart: unless-stopped
 
 networks:
   runly-net:
-    driver: bridge
-
-volumes:
-  pgdata:
