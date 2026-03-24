@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
+import {
   Folder, FolderOpen, FileJson, FileCode2, FileType2, FileText,
   FileImage, File, ChevronRight, ChevronDown, Plus, FolderPlus,
-  Pencil, Trash2, X
+  Pencil, Trash2
 } from 'lucide-react';
 
 export type FileNodeType = 'file' | 'folder';
@@ -23,228 +23,132 @@ interface FileExplorerProps {
   onFileSelect: (id: string, path: string) => void;
 }
 
-const getFileIcon = (fileName: string) => {
-  if (fileName.endsWith('.js') || fileName.endsWith('.ts') || fileName.endsWith('.jsx')) return <FileJson size={14} className="text-yellow-400" />;
-  if (fileName.endsWith('.html')) return <FileCode2 size={14} className="text-orange-500" />;
-  if (fileName.endsWith('.css')) return <FileType2 size={14} className="text-blue-500" />;
-  if (fileName.endsWith('.py')) return <FileCode2 size={14} className="text-green-500" />;
-  if (fileName.endsWith('.md')) return <FileText size={14} className="text-gray-400" />;
-  if (fileName.match(/\.(png|jpe?g|svg|gif|ico)$/i)) return <FileImage size={14} className="text-purple-400" />;
-  return <File size={14} className="text-gray-400" />;
+const getIcon = (name: string) => {
+  if (name.endsWith('.ts') || name.endsWith('.tsx')) return <FileJson size={14} style={{ color: '#3178c6' }} />;
+  if (name.endsWith('.js') || name.endsWith('.jsx')) return <FileJson size={14} style={{ color: '#f7df1e' }} />;
+  if (name.endsWith('.html')) return <FileCode2 size={14} style={{ color: '#e34f26' }} />;
+  if (name.endsWith('.css')) return <FileType2 size={14} style={{ color: '#38bdf8' }} />;
+  if (name.endsWith('.py')) return <FileCode2 size={14} style={{ color: '#4ade80' }} />;
+  if (name.endsWith('.go')) return <FileCode2 size={14} style={{ color: '#00add8' }} />;
+  if (name.endsWith('.rs')) return <FileCode2 size={14} style={{ color: '#ce422b' }} />;
+  if (name.endsWith('.java')) return <FileCode2 size={14} style={{ color: '#ed8b00' }} />;
+  if (name.endsWith('.md')) return <FileText size={14} style={{ color: 'var(--text-ghost)' }} />;
+  if (name.match(/\.(png|jpe?g|svg|gif|ico)$/i)) return <FileImage size={14} style={{ color: '#a78bfa' }} />;
+  return <File size={14} style={{ color: 'var(--text-ghost)' }} />;
 };
 
 export default function FileExplorer({ files, setFiles, activeFileId, onFileSelect }: FileExplorerProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const editInputRef = useRef<HTMLInputElement>(null);
+  const [editValue, setEditValue] = useState('');
+  const editRef = useRef<HTMLInputElement>(null);
 
-  // Focus input on edit
   useEffect(() => {
-    if (editingId && editInputRef.current) {
-      editInputRef.current.focus();
-      const dotIndex = editValue.lastIndexOf('.');
-      if (dotIndex > 0) {
-        editInputRef.current.setSelectionRange(0, dotIndex);
-      } else {
-        editInputRef.current.select();
-      }
+    if (editingId && editRef.current) {
+      editRef.current.focus();
+      const dot = editValue.lastIndexOf('.');
+      editRef.current.setSelectionRange(0, dot > 0 ? dot : editValue.length);
     }
   }, [editingId]);
 
-  // Recursively update a node
-  const updateNode = (nodes: FileNode[], id: string, updater: (node: FileNode) => FileNode | null): FileNode[] => {
-    return nodes.map(node => {
-      if (node.id === id) {
-        const updated = updater(node);
-        return updated ? updated : (null as unknown as FileNode); // We filter nulls out below
-      }
-      if (node.children) {
-        return { ...node, children: updateNode(node.children, id, updater) };
-      }
-      return node;
-    }).filter(Boolean); // Remove deleted nodes
-  };
+  const updateNode = (nodes: FileNode[], id: string, fn: (n: FileNode) => FileNode | null): FileNode[] =>
+    nodes.map(n => n.id === id ? (fn(n) || null as unknown as FileNode) : n.children ? { ...n, children: updateNode(n.children, id, fn) } : n).filter(Boolean);
 
-  // Recursively find a node by ID
   const findNode = (nodes: FileNode[], id: string): FileNode | null => {
-    for (const node of nodes) {
-      if (node.id === id) return node;
-      if (node.children) {
-        const found = findNode(node.children, id);
-        if (found) return found;
-      }
-    }
+    for (const n of nodes) { if (n.id === id) return n; if (n.children) { const f = findNode(n.children, id); if (f) return f; } }
     return null;
   };
 
-  const handleToggleFolder = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setFiles(prev => updateNode(prev, id, node => ({ ...node, isOpen: !node.isOpen })));
+  const getPath = (nodes: FileNode[], id: string, p = ''): string | null => {
+    for (const n of nodes) { const np = p ? `${p}/${n.name}` : n.name; if (n.id === id) return np; if (n.children) { const f = getPath(n.children, id, np); if (f) return f; } }
+    return null;
   };
 
-  const handleRenameCommit = (id: string, newName: string) => {
-    if (!newName.trim()) {
-      setEditingId(null);
-      return;
-    }
-    setFiles(prev => updateNode(prev, id, node => ({ ...node, name: newName })));
+  const handleClick = (id: string) => {
+    const n = findNode(files, id);
+    if (n?.type === 'file') onFileSelect(id, getPath(files, id) || n.name);
+  };
+
+  const handleCreate = (type: FileNodeType) => {
+    const id = Date.now().toString();
+    const node: FileNode = { id, name: type === 'folder' ? 'new_folder' : 'new_file.txt', type, isOpen: type === 'folder' ? true : undefined, children: type === 'folder' ? [] : undefined, content: type === 'file' ? '' : undefined };
+    setFiles(prev => [...prev, node]);
+    setEditingId(id);
+    setEditValue(node.name);
+  };
+
+  const commitRename = (id: string, name: string) => {
+    if (name.trim()) setFiles(prev => updateNode(prev, id, n => ({ ...n, name })));
     setEditingId(null);
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirm("Are you sure you want to delete this item?")) {
-      setFiles(prev => updateNode(prev, id, () => null)); // Returning null marks for deletion via filter
-    }
-  };
-
-  const constructPath = (nodes: FileNode[], targetId: string, currentPath = ""): string | null => {
-    for (const node of nodes) {
-      const nodePath = currentPath ? `${currentPath}/${node.name}` : node.name;
-      if (node.id === targetId) return nodePath;
-      if (node.children) {
-        const found = constructPath(node.children, targetId, nodePath);
-        if (found) return found;
-      }
-    }
-    return null;
-  };
-
-  const handleFileClick = (id: string) => {
-    const node = findNode(files, id);
-    if (node?.type === 'file') {
-      const fullPath = constructPath(files, id) || node.name;
-      onFileSelect(id, fullPath);
-    }
-  };
-
-  // Creates at root level for simplicity, can be expanded to create inside selected folder
-  const handleCreate = (type: FileNodeType) => {
-    const newId = Date.now().toString();
-    const newNode: FileNode = {
-      id: newId,
-      name: type === 'folder' ? 'new_folder' : 'new_file.txt',
-      type: type,
-      isOpen: type === 'folder' ? true : undefined,
-      children: type === 'folder' ? [] : undefined,
-      content: type === 'file' ? '' : undefined,
-    };
-    
-    setFiles(prev => [...prev, newNode]);
-    setEditingId(newId);
-    setEditValue(newNode.name);
-  };
-
-  const renderTree = (nodes: FileNode[], depth = 0) => {
-    return nodes.map(node => (
-      <div key={node.id} className="w-full">
-        {/* Node Row */}
-        <div 
-          onClick={node.type === 'file' ? () => handleFileClick(node.id) : (e) => handleToggleFolder(node.id, e)}
-          className={`group flex items-center justify-between py-1.5 px-2 cursor-pointer transition-colors text-sm
-            ${depth === 0 ? 'ml-0' : ''} 
-            ${activeFileId === node.id ? 'bg-[#37373D] text-white' : 'text-gray-300 hover:bg-[#2A2D2E] hover:text-white'}
-          `}
-          style={{ paddingLeft: `${(depth * 12) + 8}px` }}
-        >
-          <div className="flex items-center gap-1.5 overflow-hidden flex-1">
-            {/* Chevron for folders */}
-            {node.type === 'folder' && (
-              <span className="text-gray-400 group-hover:text-gray-200">
-                {node.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </span>
-            )}
-            {/* Indent spacer for files if needed */}
-            {node.type === 'file' && <span className="w-3" />}
-
-            {/* Icon */}
-            {node.type === 'folder' 
-              ? (node.isOpen ? <FolderOpen size={14} className="text-blue-400" /> : <Folder size={14} className="text-blue-400" />)
-              : getFileIcon(node.name)
-            }
-
-            {/* Name or Input */}
-            {editingId === node.id ? (
-              <input
-                ref={editInputRef}
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={() => handleRenameCommit(node.id, editValue)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleRenameCommit(node.id, editValue);
-                  if (e.key === 'Escape') setEditingId(null);
-                }}
-                className="bg-[#1E1E1E] text-white outline-none border border-blue-500 w-full ml-1 px-1 text-sm h-5"
-                onClick={e => e.stopPropagation()}
-              />
-            ) : (
-              <span className="truncate flex-1">{node.name}</span>
-            )}
-          </div>
-
-          {/* Hover Actions */}
-          {editingId !== node.id && (
-            <div className="hidden group-hover:flex items-center gap-1.5 pr-1">
-              <button 
-                onClick={(e) => { e.stopPropagation(); setEditValue(node.name); setEditingId(node.id); }}
-                className="text-gray-500 hover:text-blue-400 transition-colors"
-                title="Rename"
-              >
-                <Pencil size={13} />
-              </button>
-              <button 
-                onClick={(e) => handleDelete(node.id, e)}
-                className="text-gray-500 hover:text-red-400 transition-colors"
-                title="Delete"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          )}
+  const renderTree = (nodes: FileNode[], depth = 0) => nodes.map(node => (
+    <div key={node.id}>
+      <div
+        onClick={node.type === 'file' ? () => handleClick(node.id) : (e: React.MouseEvent) => { e.stopPropagation(); setFiles(prev => updateNode(prev, node.id, n => ({ ...n, isOpen: !n.isOpen }))); }}
+        className="group flex items-center justify-between py-[5px] cursor-pointer transition-colors"
+        style={{
+          paddingLeft: `${depth * 12 + 12}px`,
+          paddingRight: '8px',
+          background: activeFileId === node.id ? 'var(--blue-glow)' : 'transparent',
+          color: activeFileId === node.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+        }}
+        onMouseEnter={(e: React.MouseEvent<HTMLDivElement>) => { if (activeFileId !== node.id) { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}}
+        onMouseLeave={(e: React.MouseEvent<HTMLDivElement>) => { if (activeFileId !== node.id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; }}}
+      >
+        <div className="flex items-center gap-1.5 flex-1 overflow-hidden text-[12px]">
+          {node.type === 'folder' ? (
+            <span style={{ color: 'var(--text-ghost)' }}>{node.isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+          ) : <span className="w-3" />}
+          {node.type === 'folder'
+            ? (node.isOpen ? <FolderOpen size={14} style={{ color: 'var(--blue-400)' }} /> : <Folder size={14} style={{ color: 'var(--blue-400)' }} />)
+            : getIcon(node.name)}
+          {editingId === node.id ? (
+            <input ref={editRef} value={editValue} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditValue(e.target.value)}
+              onBlur={() => commitRename(node.id, editValue)}
+              onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter') commitRename(node.id, editValue); if (e.key === 'Escape') setEditingId(null); }}
+              className="outline-none w-full ml-1 px-1 text-[12px] h-[18px] rounded"
+              style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', border: '1px solid var(--blue-500)' }}
+              onClick={(e: React.MouseEvent) => e.stopPropagation()} />
+          ) : <span className="truncate">{node.name}</span>}
         </div>
-
-        {/* Children Render */}
-        {node.type === 'folder' && node.isOpen && node.children && (
-          <div className="flex flex-col">
-            {renderTree(node.children, depth + 1)}
+        {editingId !== node.id && (
+          <div className="hidden group-hover:flex items-center gap-0.5">
+            <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); setEditValue(node.name); setEditingId(node.id); }}
+              className="p-0.5 rounded transition-colors" style={{ color: 'var(--text-ghost)' }}
+              onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.color = 'var(--blue-400)'; }}
+              onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.color = 'var(--text-ghost)'; }}>
+              <Pencil size={11} />
+            </button>
+            <button onClick={(e: React.MouseEvent) => { e.stopPropagation(); if (confirm('Delete?')) setFiles(prev => updateNode(prev, node.id, () => null)); }}
+              className="p-0.5 rounded transition-colors" style={{ color: 'var(--text-ghost)' }}
+              onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.color = 'var(--red-400)'; }}
+              onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.color = 'var(--text-ghost)'; }}>
+              <Trash2 size={11} />
+            </button>
           </div>
         )}
       </div>
-    ));
-  };
+      {node.type === 'folder' && node.isOpen && node.children && renderTree(node.children, depth + 1)}
+    </div>
+  ));
 
   return (
-    <div className="flex flex-col w-full h-full bg-[#18181A] select-none text-gray-300">
-      {/* Explorer Header */}
-      <div className="flex items-center justify-between px-4 py-2 text-xs font-semibold tracking-wider text-gray-400 border-b border-[#2B2D31]">
-        <span>EXPLORER</span>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => handleCreate('file')}
-            className="hover:text-white transition-colors p-0.5 rounded hover:bg-[#2B2D31]"
-            title="New File"
-          >
-            <Plus size={15} />
+    <div className="flex flex-col w-full h-full select-none" style={{ background: 'var(--bg-surface)' }}>
+      <div className="flex items-center justify-between px-3 h-[44px] shrink-0" style={{ borderBottom: '1px solid var(--border-primary)' }}>
+        <span className="text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: 'var(--text-ghost)' }}>Explorer</span>
+        <div className="flex items-center gap-0.5">
+          <button onClick={() => handleCreate('file')} className="btn btn-ghost" style={{ padding: '3px' }}>
+            <Plus size={14} />
           </button>
-          <button 
-            onClick={() => handleCreate('folder')}
-            className="hover:text-white transition-colors p-0.5 rounded hover:bg-[#2B2D31]"
-            title="New Folder"
-          >
-            <FolderPlus size={15} />
+          <button onClick={() => handleCreate('folder')} className="btn btn-ghost" style={{ padding: '3px' }}>
+            <FolderPlus size={14} />
           </button>
         </div>
       </div>
-
-      {/* File Tree */}
-      <div className="flex-1 overflow-y-auto no-scrollbar py-2">
+      <div className="flex-1 overflow-y-auto no-scrollbar py-1">
         {files.length === 0 ? (
-          <div className="text-center text-xs text-gray-500 mt-10 px-4">
-            No files currently open. Click the + icon to create a file.
-          </div>
-        ) : (
-          renderTree(files, 0)
-        )}
+          <div className="text-center text-[11px] mt-12 px-4" style={{ color: 'var(--text-ghost)' }}>No files yet</div>
+        ) : renderTree(files)}
       </div>
     </div>
   );

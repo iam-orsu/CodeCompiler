@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, RotateCcw, Box, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Play, Square, ChevronDown, Zap } from 'lucide-react';
 import { useLanguages } from '../../hooks/useLanguages';
 import { LanguageId } from '../../types';
 
@@ -17,218 +17,137 @@ interface EditorToolbarProps {
   onLibraryChange: (libs: string[]) => void;
 }
 
-const getLanguageIcon = (id: string) => {
-  switch(id) {
-    case 'python': return '🐍';
-    case 'javascript': return '🟢';
-    case 'typescript': return '📘';
-    case 'c': return '🅲';
-    case 'cpp': return '⚡';
-    case 'java': return '☕';
-    case 'go': return '🐹';
-    case 'rust': return '🦀';
-    case 'php': return '🐘';
-    case 'bash': return '🐚';
-    case 'r': return '📊';
-    case 'csharp': return '🎯';
-    case 'ruby': return '💎';
-    case 'scala': return '🧗';
-    case 'html': return '🌐';
-    case 'react': return '⚛️';
-    case 'vue': return '💚';
-    case 'angular': return '🅰️';
-    case 'sqlite': return '🗄️';
-    case 'mongodb': return '🍃';
-    default: return '📄';
-  }
+const EMOJI: Record<string, string> = {
+  python: '🐍', javascript: '🟡', typescript: '🔷', c: '🔵', cpp: '🔵',
+  java: '☕', go: '🔹', rust: '🦀', php: '🐘',
+  r: '📊', csharp: '🟣', ruby: '💎', html: '🌐', react: '⚛️',
+  vue: '💚', angular: '🔺', sqlite: '🗃️', mongodb: '🍃',
 };
 
 export default function EditorToolbar({
-  language,
-  onLanguageChange,
-  onRun,
-  onStop,
-  isRunning,
-  isWebMode,
-  isSpecial,
-  selectedLibraries,
-  onLibraryChange
+  language, onLanguageChange, onRun, onStop, isRunning,
+  isWebMode, isSpecial, selectedLibraries, onLibraryChange,
 }: EditorToolbarProps) {
   const { languages } = useLanguages();
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [pendingLanguage, setPendingLanguage] = useState<LanguageId | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  
-  const handleLangChange = (newLang: LanguageId) => {
-    if (newLang !== language) {
-      setPendingLanguage(newLang);
-    }
-    setDropdownOpen(false);
-  };
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState<LanguageId | null>(null);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const confirmLanguageChange = () => {
-    if (pendingLanguage) {
-      onLanguageChange(pendingLanguage);
-      setPendingLanguage(null);
-    }
-  };
-
+  useEffect(() => { if (open && searchRef.current) searchRef.current.focus(); }, [open]);
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setSearch(''); } };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const currentLangConfig = languages.find(l => l.id === language);
-  const pendingLangConfig = languages.find(l => l.id === pendingLanguage);
+  const current = languages.find((l: any) => l.id === language);
+  const pendingConfig = languages.find((l: any) => l.id === pending);
+  const filter = (list: any[]) => search ? list.filter((l: any) => l.name.toLowerCase().includes(search.toLowerCase())) : list;
+  const prog = filter(languages.filter((l: any) => !l.isWebMode && !l.isSpecial));
+  const web = filter(languages.filter((l: any) => l.isWebMode));
+  const db = filter(languages.filter((l: any) => l.isSpecial));
+
+  const pick = (id: LanguageId) => { if (id !== language) setPending(id); setOpen(false); setSearch(''); };
+  const confirm = () => { if (pending) { onLanguageChange(pending); setPending(null); } };
+
+  const Section = ({ title, items }: { title: string; items: any[] }) => items.length === 0 ? null : (
+    <>
+      <div className="text-[10px] font-semibold uppercase tracking-wider px-3 pt-2.5 pb-1" style={{ color: 'var(--text-ghost)' }}>{title}</div>
+      {items.map((l: any) => (
+        <button key={l.id} onClick={() => pick(l.id)}
+          className="flex items-center gap-2 w-[calc(100%-8px)] mx-1 px-2 py-[5px] text-[12px] rounded-md transition-colors"
+          style={{
+            background: language === l.id ? 'var(--blue-glow)' : 'transparent',
+            color: language === l.id ? 'var(--blue-400)' : 'var(--text-secondary)',
+            fontWeight: language === l.id ? 600 : 400,
+          }}
+          onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { if (language !== l.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+          onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { if (language !== l.id) e.currentTarget.style.background = 'transparent'; }}
+        >
+          <span className="text-[13px] w-5 text-center">{EMOJI[l.id] || '📄'}</span>
+          {l.name}
+          {language === l.id && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: 'var(--blue-500)' }} />}
+        </button>
+      ))}
+    </>
+  );
 
   return (
     <>
-      <div className="flex items-center justify-between w-full h-[41px] px-3 bg-[#161B22] shadow-sm relative z-40">
-        {/* Left items: Custom Dropdown */}
-        <div className="flex items-center gap-2" ref={dropdownRef}>
-          <div className="relative">
-            <div 
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center bg-[#1E232B] hover:bg-[#2A303A] transition-colors rounded-md border border-[#3E4148] group cursor-pointer select-none shadow-sm"
-            >
-              <div className="px-2.5 py-1.5 flex items-center gap-2 text-xs text-gray-200 font-medium">
-                 <span className="text-[13px]">{getLanguageIcon(language)}</span>
-                 {currentLangConfig?.name || 'Select Language'}
+      <div className="flex items-center justify-between h-[44px] px-3 shrink-0"
+           style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
+        {/* Language Picker */}
+        <div ref={ref} className="relative">
+          <button onClick={() => setOpen(!open)}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors"
+            style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}>
+            <span className="text-[13px]">{EMOJI[language] || '📄'}</span>
+            {current?.name || 'Select'}
+            <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: 'var(--text-muted)' }} />
+          </button>
+
+          {open && (
+            <div className="absolute top-[calc(100%+4px)] left-0 w-[240px] rounded-lg overflow-hidden z-50 animate-slide-down"
+                 style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-secondary)', boxShadow: '0 16px 48px rgba(0,0,0,0.5)' }}>
+              <div className="p-1.5" style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                <input ref={searchRef} type="text" placeholder="Search..." value={search} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded text-[11px] outline-none"
+                  style={{ background: 'var(--bg-base)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)' }} />
               </div>
-              <div className="px-2 py-1.5 border-l border-[#3E4148] flex items-center">
-                 <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180 text-gray-200' : 'group-hover:text-gray-200'}`} />
+              <div className="overflow-y-auto max-h-[320px] no-scrollbar py-0.5">
+                <Section title="Languages" items={prog} />
+                <Section title="Frontend" items={web} />
+                <Section title="Databases" items={db} />
+                {prog.length === 0 && web.length === 0 && db.length === 0 && (
+                  <div className="px-3 py-6 text-center text-[11px]" style={{ color: 'var(--text-ghost)' }}>No results</div>
+                )}
               </div>
             </div>
-
-            {/* Custom Popover */}
-            {dropdownOpen && (
-              <div className="absolute top-[calc(100%+6px)] left-0 w-[240px] bg-[#161B22] border border-[#2E3138] rounded-md shadow-xl overflow-hidden z-50 flex flex-col max-h-[400px]">
-                <div className="overflow-y-auto w-full no-scrollbar pb-2">
-                  
-                  {/* Programming */}
-                  <div className="text-[10px] uppercase font-bold text-gray-500 tracking-wider px-3 pt-3 pb-1.5 sticky top-0 bg-[#161B22]/95 backdrop-blur-sm z-10 border-b border-[#2E3138]/50 mb-1">
-                    Programming
-                  </div>
-                  <div className="flex flex-col px-1.5 space-y-0.5">
-                    {languages.filter((l: any) => !l.isWebMode && !l.isSpecial).map((l: any) => (
-                      <button
-                        key={l.id} 
-                        onClick={() => handleLangChange(l.id)}
-                        className={`flex items-center gap-2.5 text-left px-2 py-1.5 text-xs rounded-md transition-colors ${language === l.id ? 'bg-blue-500/10 text-blue-400 font-medium' : 'text-gray-300 hover:bg-[#2E3138] hover:text-gray-100'}`}
-                      >
-                        <span className="text-[13px] w-4 text-center">{getLanguageIcon(l.id)}</span>
-                        {l.name}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Front End */}
-                  <div className="text-[10px] uppercase font-bold text-gray-500 tracking-wider px-3 pt-3 pb-1.5 sticky top-0 bg-[#161B22]/95 backdrop-blur-sm z-10 border-b border-[#2E3138]/50 mt-2 mb-1">
-                    Front End
-                  </div>
-                  <div className="flex flex-col px-1.5 space-y-0.5">
-                    {languages.filter((l: any) => l.isWebMode).map((l: any) => (
-                      <button
-                        key={l.id} 
-                        onClick={() => handleLangChange(l.id)}
-                        className={`flex items-center gap-2.5 text-left px-2 py-1.5 text-xs rounded-md transition-colors ${language === l.id ? 'bg-blue-500/10 text-blue-400 font-medium' : 'text-gray-300 hover:bg-[#2E3138] hover:text-gray-100'}`}
-                      >
-                        <span className="text-[13px] w-4 text-center">{getLanguageIcon(l.id)}</span>
-                        {l.name}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Databases */}
-                  <div className="text-[10px] uppercase font-bold text-gray-500 tracking-wider px-3 pt-3 pb-1.5 sticky top-0 bg-[#161B22]/95 backdrop-blur-sm z-10 border-b border-[#2E3138]/50 mt-2 mb-1">
-                    Databases
-                  </div>
-                  <div className="flex flex-col px-1.5 space-y-0.5">
-                    {languages.filter((l: any) => l.isSpecial).map((l: any) => (
-                      <button
-                        key={l.id} 
-                        onClick={() => handleLangChange(l.id)}
-                        className={`flex items-center gap-2.5 text-left px-2 py-1.5 text-xs rounded-md transition-colors ${language === l.id ? 'bg-blue-500/10 text-blue-400 font-medium' : 'text-gray-300 hover:bg-[#2E3138] hover:text-gray-100'}`}
-                      >
-                        <span className="text-[13px] w-4 text-center">{getLanguageIcon(l.id)}</span>
-                        {l.name}
-                      </button>
-                    ))}
-                  </div>
-
-                </div>
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Right items: Action buttons */}
-        <div className="flex items-center gap-4">
-          {isWebMode && (
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-gray-300 hover:bg-[#2E3138] transition-colors">
-              <Box size={14} />
-              <span>Packages ({selectedLibraries.length})</span>
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          <kbd className="hidden sm:flex items-center text-[10px] px-1.5 py-0.5 rounded"
+               style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-primary)', color: 'var(--text-ghost)', fontFamily: "'JetBrains Mono', monospace" }}>
+            Ctrl+Enter
+          </kbd>
+          {!isRunning ? (
+            <button className="btn btn-primary" onClick={onRun}>
+              <Play size={12} fill="currentColor" />
+              {isWebMode ? 'Preview' : isSpecial ? 'Query' : 'Run'}
+            </button>
+          ) : (
+            <button className="btn btn-danger" onClick={onStop}>
+              <Square size={12} fill="currentColor" />
+              Stop
             </button>
           )}
-          
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-gray-500 font-medium hidden sm:block">Ctrl+Enter</span>
-            {!isRunning ? (
-              <button 
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white text-xs font-bold tracking-wide transition-all shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-                onClick={onRun}
-              >
-                {isWebMode ? <RotateCcw size={14} /> : <Play size={14} fill="currentColor" />}
-                <span>{isWebMode ? 'Refresh' : isSpecial ? 'Run Query' : 'Run'}</span>
-              </button>
-            ) : (
-              <button 
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-xs font-bold tracking-wide transition-all shadow-[0_0_8px_rgba(239,68,68,0.3)]"
-                onClick={onStop}
-              >
-                <Square size={14} fill="currentColor" />
-                <span>Stop</span>
-              </button>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* Language Change Modal Dialog */}
-      {pendingLanguage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-all duration-200 ease-out">
-          <div className="bg-[#161B22] border border-[#2E3138] rounded-xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all duration-200 scale-100 opacity-100">
-            <div className="p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/10 shrink-0">
-                  <AlertTriangle className="text-amber-500" size={24} />
+      {/* Switch Language Confirmation */}
+      {pending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
+             style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
+          <div className="w-full max-w-[360px] rounded-lg overflow-hidden animate-scale-in"
+               style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-secondary)', boxShadow: '0 24px 64px rgba(0,0,0,0.5)' }}>
+            <div className="p-5">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: 'var(--amber-glow)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                  <Zap size={16} style={{ color: 'var(--amber-500)' }} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-100">Change Language?</h3>
+                  <h3 className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>Switch to {pendingConfig?.name}?</h3>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>Your current code will be replaced.</p>
                 </div>
               </div>
-              <p className="text-sm text-gray-400 pl-16">
-                Switching to <span className="text-white font-medium">{pendingLangConfig?.name}</span> will replace your current code. This action cannot be undone.
-              </p>
             </div>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 bg-[#0E1117] border-t border-[#2E3138]">
-              <button 
-                onClick={() => setPendingLanguage(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white bg-transparent hover:bg-[#2E3138] rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmLanguageChange}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors shadow-sm"
-              >
-                Continue
-              </button>
+            <div className="flex justify-end gap-2 px-5 py-3" style={{ background: 'var(--bg-base)', borderTop: '1px solid var(--border-primary)' }}>
+              <button className="btn btn-ghost" onClick={() => setPending(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={confirm}>Switch</button>
             </div>
           </div>
         </div>

@@ -74,14 +74,6 @@ export const LANGUAGES: LanguageConfig[] = [
     isSpecial: false
   },
   {
-    id: 'bash',
-    name: 'Bash',
-    monacoLanguage: 'shell',
-    defaultCode: '#!/bin/bash\n\necho "Hello Bash!"',
-    isWebMode: false,
-    isSpecial: false
-  },
-  {
     id: 'r',
     name: 'R',
     monacoLanguage: 'r',
@@ -105,14 +97,7 @@ export const LANGUAGES: LanguageConfig[] = [
     isWebMode: false,
     isSpecial: false
   },
-  {
-    id: 'scala',
-    name: 'Scala',
-    monacoLanguage: 'scala',
-    defaultCode: 'object Main {\n    def main(args: Array[String]): Unit = {\n        println("Hello Scala!")\n    }\n}',
-    isWebMode: false,
-    isSpecial: false
-  },
+
   {
     id: 'sqlite',
     name: 'SQLite',

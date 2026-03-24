@@ -12,7 +12,7 @@ load_dotenv()
 
 TIMEOUT_INTERPRETED = int(os.getenv("EXECUTION_TIMEOUT_INTERPRETED", "15"))
 TIMEOUT_COMPILED = int(os.getenv("EXECUTION_TIMEOUT_COMPILED", "30"))
-COMPILED_LANGS = {"c", "cpp", "java", "go", "rust", "scala"}
+COMPILED_LANGS = {"c", "cpp", "java", "go", "rust", "scala", "csharp"}
 
 docker_client = docker.from_env()
 
@@ -23,6 +23,9 @@ def create_tar(filename: str, code: str) -> bytes:
         tinfo = tarfile.TarInfo(name=filename)
         tinfo.size = len(encoded)
         tinfo.mtime = int(time.time())
+        tinfo.uid = 1000
+        tinfo.gid = 1000
+        tinfo.mode = 0o755  # Ensure executable and readable
         tar.addfile(tinfo, io.BytesIO(encoded))
     return tar_stream.getvalue()
 
@@ -102,13 +105,11 @@ async def execute_code(ws: WebSocket, lang: str, code: str):
     wait_task = asyncio.create_task(wait_for_exit())
 
     try:
-        done, pending = await asyncio.wait(
-            [read_task, wait_task], 
-            return_when=asyncio.FIRST_COMPLETED,
-            timeout=timeout
-        )
-        if wait_task not in done:
-            await ws.send_json({"type": "stderr", "data": f"\nExecution timed out ({timeout}s)"})
+        await asyncio.wait_for(wait_task, timeout=timeout)
+        # Give the socket a tiny fraction of a second to flush the final output streams
+        await asyncio.wait([read_task], timeout=0.1)
+    except asyncio.TimeoutError:
+        await ws.send_json({"type": "stderr", "data": f"\nExecution timed out ({timeout}s)"})
     except Exception:
         pass
     finally:

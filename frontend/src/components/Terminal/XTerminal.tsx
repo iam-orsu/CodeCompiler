@@ -17,69 +17,85 @@ export interface XTerminalRef {
 }
 
 const XTerminal = ({ wsClient, isRunning, onTerminalReady }: XTerminalProps) => {
-  const terminalRef = useRef<HTMLDivElement>(null);
-  const termInstance = useRef<Terminal | null>(null);
-  const fitAddon = useRef<FitAddon | null>(null);
-  
-  const wsClientRef = useRef(wsClient);
-  const isRunningRef = useRef(isRunning);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const term = useRef<Terminal | null>(null);
+  const fit = useRef<FitAddon | null>(null);
+  const wsRef = useRef(wsClient);
+  const runRef = useRef(isRunning);
 
-  useEffect(() => { wsClientRef.current = wsClient; }, [wsClient]);
-  useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
+  useEffect(() => { wsRef.current = wsClient; }, [wsClient]);
+  useEffect(() => { runRef.current = isRunning; }, [isRunning]);
 
   useEffect(() => {
     if (onTerminalReady) {
       onTerminalReady({
-        write: (data: string) => { termInstance.current?.write(data); },
-        clear: () => { termInstance.current?.clear(); }
+        write: (d: string) => term.current?.write(d),
+        clear: () => term.current?.clear(),
       });
     }
   }, [onTerminalReady]);
 
   useEffect(() => {
-    if (!terminalRef.current) return;
+    if (!containerRef.current) return;
 
-    termInstance.current = new Terminal({
+    term.current = new Terminal({
       cursorBlink: true,
+      cursorStyle: 'bar',
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
       fontSize: 13,
+      lineHeight: 1.5,
+      letterSpacing: 0.2,
       theme: {
-        background: '#0E1117',
-        foreground: '#e2e8f0',
-        cursor: '#3B82F6',
-        selectionBackground: 'rgba(59, 130, 246, 0.3)'
+        background: '#09090b',
+        foreground: '#d4d4d8',
+        cursor: '#3b82f6',
+        cursorAccent: '#09090b',
+        selectionBackground: 'rgba(59,130,246,0.2)',
+        selectionForeground: '#fafafa',
+        black: '#27272a',
+        red: '#ef4444',
+        green: '#22c55e',
+        yellow: '#eab308',
+        blue: '#3b82f6',
+        magenta: '#c084fc',
+        cyan: '#22d3ee',
+        white: '#d4d4d8',
+        brightBlack: '#52525b',
+        brightRed: '#f87171',
+        brightGreen: '#4ade80',
+        brightYellow: '#fde68a',
+        brightBlue: '#60a5fa',
+        brightMagenta: '#d8b4fe',
+        brightCyan: '#67e8f9',
+        brightWhite: '#fafafa',
       }
     });
 
-    fitAddon.current = new FitAddon();
-    termInstance.current.loadAddon(fitAddon.current);
-    termInstance.current.open(terminalRef.current);
-    
-    // Tiny delay ensures panel geometry locks before fit
-    setTimeout(() => fitAddon.current?.fit(), 10);
+    fit.current = new FitAddon();
+    term.current.loadAddon(fit.current);
+    term.current.open(containerRef.current);
+    setTimeout(() => fit.current?.fit(), 10);
 
-    const onDataDisposable = termInstance.current.onData((data) => {
-      if (isRunningRef.current && wsClientRef.current) {
-        wsClientRef.current.sendInput(data);
-      }
+    const dataSub = term.current.onData((data: string) => {
+      if (runRef.current && wsRef.current) wsRef.current.sendInput(data);
     });
 
-    const handleResize = () => {
-      fitAddon.current?.fit();
-    };
-    
-    window.addEventListener('resize', handleResize);
+    const onResize = () => fit.current?.fit();
+    window.addEventListener('resize', onResize);
+
+    const obs = new ResizeObserver(() => setTimeout(() => fit.current?.fit(), 0));
+    if (containerRef.current.parentElement) obs.observe(containerRef.current.parentElement);
 
     return () => {
-      onDataDisposable.dispose();
-      window.removeEventListener('resize', handleResize);
-      termInstance.current?.dispose();
+      dataSub.dispose();
+      window.removeEventListener('resize', onResize);
+      obs.disconnect();
+      term.current?.dispose();
     };
   }, []);
 
-  return <div className="w-full h-full bg-[#0E1117] rounded-sm overflow-hidden" ref={terminalRef}></div>;
+  return <div className="w-full h-full rounded overflow-hidden" style={{ background: '#09090b' }} ref={containerRef} />;
 };
 
 XTerminal.displayName = 'XTerminal';
-
 export default XTerminal;

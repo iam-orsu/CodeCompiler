@@ -9,37 +9,52 @@ import EditorToolbar from '../components/Editor/EditorToolbar';
 import CodeEditor from '../components/Editor/CodeEditor';
 import LivePreview from '../components/Preview/LivePreview';
 import { RunlyWebSocket } from '../lib/ws';
-import styles from './page.module.css';
 import { XTerminalRef } from '../components/Terminal/XTerminal';
 import FileExplorer, { FileNode } from '../components/Explorer/FileExplorer';
+import { Github, Wifi, WifiOff } from 'lucide-react';
 
 const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), { 
   ssr: false,
-  loading: () => <div className="flex h-full items-center justify-center bg-[#090a0f] text-gray-400">Loading Terminal...</div>
+  loading: () => (
+    <div className="flex h-full items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+      <div className="spinner" />
+    </div>
+  ),
 });
+
+const LANG_EMOJI: Record<string, string> = {
+  python: '🐍', javascript: '🟡', typescript: '🔷', c: '🔵', cpp: '🔵',
+  java: '☕', go: '🔹', rust: '🦀', php: '🐘',
+  r: '📊', csharp: '🟣', ruby: '💎', html: '🌐', react: '⚛️',
+  vue: '💚', angular: '🔺', sqlite: '🗃️', mongodb: '🍃',
+};
 
 export default function Home() {
   const { languages, loading } = useLanguages();
-  
   const [currentLangId, setCurrentLangId] = useState<LanguageId>('python');
   const [code, setCode] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [selectedLibraries, setSelectedLibraries] = useState<string[]>([]);
-  
   const [files, setFiles] = useState<FileNode[]>([]);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
-  
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const wsClientRef = useRef<RunlyWebSocket | null>(null);
   const terminalRef = useRef<XTerminalRef>(null);
 
-  const currentLangConfig = languages.find(l => l.id === currentLangId) as LanguageConfig;
+  const currentLangConfig = languages.find((l: LanguageConfig) => l.id === currentLangId) as LanguageConfig;
 
   useEffect(() => {
     if (languages.length > 0) {
-      const target = languages.find(l => l.id === currentLangId);
+      const target = languages.find((l: LanguageConfig) => l.id === currentLangId);
       if (target) {
         setCode(target.defaultCode);
-        const ext = target.monacoLanguage === 'python' ? 'py' : target.id === 'javascript' || target.id === 'react' ? 'js' : target.id === 'c' ? 'c' : target.id === 'cpp' ? 'cpp' : target.id === 'java' ? 'java' : target.monacoLanguage || 'txt';
+        const extMap: Record<string, string> = {
+          python: 'py', javascript: 'js', typescript: 'ts', c: 'c', cpp: 'cpp',
+          java: 'java', go: 'go', rust: 'rs', php: 'php', r: 'R',
+          csharp: 'cs', ruby: 'rb', html: 'html', react: 'jsx', vue: 'vue',
+          angular: 'ts', sqlite: 'sql', mongodb: 'js',
+        };
+        const ext = extMap[target.id] || 'txt';
         const fileId = `file-${Date.now()}`;
         setFiles([{ id: fileId, name: `main.${ext}`, type: 'file', content: target.defaultCode }]);
         setActiveFileId(fileId);
@@ -47,90 +62,58 @@ export default function Home() {
     }
   }, [currentLangId, languages]);
 
-  useEffect(() => {
-    return () => {
-      wsClientRef.current?.stop();
-    };
-  }, []);
+  useEffect(() => { return () => { wsClientRef.current?.stop(); }; }, []);
 
   const findFileContent = (nodes: FileNode[], id: string): string | undefined => {
     for (const node of nodes) {
       if (node.id === id) return node.content;
-      if (node.children) {
-         const found = findFileContent(node.children, id);
-         if (found !== undefined) return found;
-      }
+      if (node.children) { const f = findFileContent(node.children, id); if (f !== undefined) return f; }
     }
     return undefined;
   };
 
-  const handleFileSelect = (id: string, path: string) => {
+  const handleFileSelect = (id: string, _path: string) => {
     setActiveFileId(id);
     const content = findFileContent(files, id);
-    if (content !== undefined) {
-      setCode(content);
-    } else {
-      setCode("");
-    }
+    setCode(content !== undefined ? content : '');
   };
 
-  const updateFileContent = (nodes: FileNode[], id: string, newContent: string): FileNode[] => {
-    return nodes.map(node => {
-      if (node.id === id) return { ...node, content: newContent };
-      if (node.children) return { ...node, children: updateFileContent(node.children, id, newContent) };
-      return node;
+  const updateFileContent = (nodes: FileNode[], id: string, c: string): FileNode[] => {
+    return nodes.map(n => {
+      if (n.id === id) return { ...n, content: c };
+      if (n.children) return { ...n, children: updateFileContent(n.children, id, c) };
+      return n;
     });
   };
 
-  const handleEditorChange = (newval: string) => {
-    setCode(newval);
-    if (activeFileId) {
-      setFiles(prev => updateFileContent(prev, activeFileId, newval));
-    }
+  const handleEditorChange = (val: string) => {
+    setCode(val);
+    if (activeFileId) setFiles(prev => updateFileContent(prev, activeFileId, val));
   };
 
   const handleLanguageChange = (id: LanguageId) => {
     setCurrentLangId(id);
-    if (wsClientRef.current) {
-      wsClientRef.current.stop();
-      setIsRunning(false);
-    }
+    if (wsClientRef.current) { wsClientRef.current.stop(); setIsRunning(false); }
   };
 
   const handleRun = useCallback(() => {
-    if (!currentLangConfig) return;
-
-    if (currentLangConfig.isWebMode) {
-      // Reassign string to trigger a re-render/refresh effect if necessary, 
-      // but normally srcdoc is reactive. To force it we can quickly reset.
-      return;
-    }
-
-    if (wsClientRef.current) {
-      wsClientRef.current.stop();
-    }
-
+    if (!currentLangConfig || currentLangConfig.isWebMode) return;
+    if (wsClientRef.current) wsClientRef.current.stop();
     terminalRef.current?.clear();
     setIsRunning(true);
-    
-    // Pass fake wsClient logic if on web mode (shouldn't be reached)
     const ws = new RunlyWebSocket();
     wsClientRef.current = ws;
-
     ws.executeCode(
-      currentLangConfig.id,
-      code,
-      (data: string) => {
-        terminalRef.current?.write(data.replace(/\n/g, '\r\n')); 
-      },
-      (status: any) => {
+      currentLangConfig.id, code,
+      (data: string) => { terminalRef.current?.write(data.replace(/\n/g, '\r\n')); },
+      (status: { type: string }) => {
         if (status.type === 'start') {
-          terminalRef.current?.write(`\x1b[32m[SYSTEM]\x1b[0m Starting ${currentLangConfig.name} execution...\r\n\r\n`);
+          terminalRef.current?.write(`\x1b[38;5;244m$ Running ${currentLangConfig.name}...\x1b[0m\r\n\r\n`);
         } else if (status.type === 'exit') {
-          terminalRef.current?.write(`\r\n\x1b[32m[SYSTEM]\x1b[0m Process exited.\r\n`);
+          terminalRef.current?.write(`\r\n\x1b[38;5;244m$ Process exited.\x1b[0m\r\n`);
           setIsRunning(false);
         } else if (status.type === 'error') {
-          terminalRef.current?.write(`\r\n\x1b[31m[ERROR]\x1b[0m Connection error.\r\n`);
+          terminalRef.current?.write(`\r\n\x1b[38;5;196mConnection error.\x1b[0m\r\n`);
           setIsRunning(false);
         } else if (status.type === 'close') {
           setIsRunning(false);
@@ -142,100 +125,163 @@ export default function Home() {
   const handleStop = useCallback(() => {
     wsClientRef.current?.stop();
     setIsRunning(false);
-    terminalRef.current?.write(`\r\n\x1b[33m[SYSTEM]\x1b[0m Execution stopped by user.\r\n`);
+    terminalRef.current?.write(`\r\n\x1b[38;5;214m$ Stopped.\x1b[0m\r\n`);
   }, []);
 
-  if (loading || !currentLangConfig) return <div className="h-screen w-screen bg-[#0E1117]" />;
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (isRunning) handleStop(); else handleRun();
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [handleRun, handleStop, isRunning]);
+
+  const activeFileName = files.find(f => f.id === activeFileId)?.name || '';
+
+  if (loading || !currentLangConfig) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+        <div className="flex flex-col items-center gap-3 animate-fade-in">
+          <div className="spinner" />
+          <span className="text-xs" style={{ color: 'var(--text-ghost)' }}>Loading</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <main className="flex flex-col h-screen w-screen overflow-hidden bg-[#0E1117] text-gray-300 font-sans">
-      {/* Global Brand Header */}
-      <header className="h-[40px] flex items-center justify-between px-4 bg-[#0E1117] border-b border-[#2E3138] shrink-0">
+    <main className="flex flex-col h-screen w-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
+      {/* === HEADER === */}
+      <header className="h-[48px] flex items-center justify-between px-4 shrink-0 select-none"
+              style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 font-bold text-white tracking-wide">
-            <span className="text-blue-500 text-lg">{'</>'}</span> Runly.dev
+          {/* Logo */}
+          <div className="flex items-center gap-2.5">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <rect width="24" height="24" rx="6" fill="url(#logo-grad)" />
+              <path d="M7 8l5 4-5 4M13 16h4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="24" y2="24"><stop stopColor="#3b82f6"/><stop offset="1" stopColor="#2563eb"/></linearGradient></defs>
+            </svg>
+            <span className="text-[14px] font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              Runly<span style={{ color: 'var(--blue-500)' }}>.dev</span>
+            </span>
           </div>
-          <span className="text-[11px] text-gray-500 hidden sm:inline-block">Run code in 16 languages instantly</span>
+          <div className="hidden md:block h-4 w-px" style={{ background: 'var(--border-primary)' }} />
+          <span className="hidden md:block text-[11px]" style={{ color: 'var(--text-ghost)' }}>
+            Online Code Editor
+          </span>
         </div>
-        <div className="flex items-center text-xs text-gray-400 hover:text-white cursor-pointer transition-colors">
-          GitHub
+        <div className="flex items-center gap-1">
+          <a href="https://github.com/iam-orsu/CodeCompiler" target="_blank" rel="noopener noreferrer"
+             className="btn btn-ghost" style={{ fontSize: '12px' }}>
+            <Github size={14} />
+            <span className="hidden sm:inline">GitHub</span>
+          </a>
         </div>
       </header>
-      
+
+      {/* === WORKSPACE === */}
       <div className="flex-1 flex overflow-hidden">
-        <PanelGroup direction="horizontal" autoSaveId="runly-panels">
-          
-          <Panel defaultSize={15} minSize={10} className="bg-[#161B22] border-r border-[#2E3138] flex flex-col hidden md:flex">
-            <FileExplorer 
-              files={files} 
-              setFiles={setFiles} 
-              activeFileId={activeFileId} 
-              onFileSelect={handleFileSelect} 
+        <PanelGroup direction="horizontal" autoSaveId="runly-v3">
+
+          {/* File Explorer */}
+          <Panel defaultSize={14} minSize={10} className="hidden md:flex flex-col"
+                 style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-primary)' }}>
+            <FileExplorer files={files} setFiles={setFiles} activeFileId={activeFileId} onFileSelect={handleFileSelect} />
+          </Panel>
+          <PanelResizeHandle className="resize-handle hidden md:block" />
+
+          {/* Editor Panel */}
+          <Panel defaultSize={52} minSize={30} className="flex flex-col" style={{ background: 'var(--bg-base)' }}>
+            {/* Toolbar */}
+            <EditorToolbar
+              language={currentLangId} onLanguageChange={handleLanguageChange}
+              onRun={handleRun} onStop={handleStop} isRunning={isRunning}
+              isWebMode={currentLangConfig.isWebMode} isSpecial={currentLangConfig.isSpecial}
+              selectedLibraries={selectedLibraries} onLibraryChange={setSelectedLibraries}
             />
-          </Panel>
-
-          <PanelResizeHandle className="w-1 bg-transparent hover:bg-blue-500/50 active:bg-blue-500 transition-colors cursor-col-resize" />
-
-          <Panel defaultSize={50} minSize={30} className="flex flex-col bg-[#0E1117]">
-            {/* Editor Pane Header containing Toolbars */}
-            <div className="flex items-center justify-between bg-[#161B22] border-b border-[#2E3138]">
-              <EditorToolbar 
-                language={currentLangId}
-                onLanguageChange={handleLanguageChange}
-                onRun={handleRun}
-                onStop={handleStop}
-                isRunning={isRunning}
-                isWebMode={currentLangConfig.isWebMode}
-                isSpecial={currentLangConfig.isSpecial}
-                selectedLibraries={selectedLibraries}
-                onLibraryChange={setSelectedLibraries}
-              />
-            </div>
-            <div className="flex-1 overflow-hidden relative">
-              <CodeEditor 
+            {/* Tab bar */}
+            {activeFileName && (
+              <div className="flex items-center h-[34px] px-1 shrink-0"
+                   style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
+                <div className="flex items-center gap-1.5 px-3 h-full text-[12px] relative"
+                     style={{ color: 'var(--text-primary)', background: 'var(--bg-base)', borderTop: '2px solid var(--blue-500)', borderRadius: '0' }}>
+                  <span className="text-[13px]">{LANG_EMOJI[currentLangId] || '📄'}</span>
+                  <span className="font-medium">{activeFileName}</span>
+                </div>
+              </div>
+            )}
+            {/* Editor */}
+            <div className="flex-1 overflow-hidden">
+              <CodeEditor
                 language={currentLangConfig.monacoLanguage as LanguageId}
-                value={code}
-                onChange={handleEditorChange}
-                readOnly={isRunning}
+                value={code} onChange={handleEditorChange} readOnly={isRunning}
+                onCursorChange={setCursorPos}
               />
             </div>
           </Panel>
 
-          <PanelResizeHandle className="w-1 bg-transparent hover:bg-blue-500/50 active:bg-blue-500 transition-colors cursor-col-resize z-10" />
+          <PanelResizeHandle className="resize-handle" />
 
-          <Panel defaultSize={35} minSize={20} className="flex flex-col bg-[#0E1117] border-l border-[#2E3138]">
-            <div className="flex items-center justify-between bg-[#161B22] border-b border-[#2E3138] px-4 py-2.5 h-[41px]">
-              <div className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                 <span className="text-blue-400 font-mono text-xs">{'>_'}</span> Console
+          {/* Console/Preview Panel */}
+          <Panel defaultSize={34} minSize={20} className="flex flex-col"
+                 style={{ background: 'var(--bg-base)', borderLeft: '1px solid var(--border-primary)' }}>
+            {/* Console Header */}
+            <div className="flex items-center justify-between h-[44px] px-4 shrink-0"
+                 style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
+              <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                <span style={{ color: 'var(--text-ghost)', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px' }}>{'>'}_</span>
+                <span>{currentLangConfig.isWebMode ? 'Preview' : 'Console'}</span>
+                {isRunning && (
+                  <span className="status-badge" style={{ background: 'var(--blue-glow)', color: 'var(--blue-400)', border: '1px solid rgba(59,130,246,0.15)' }}>
+                    <span className="dot dot-blue dot-pulse" />
+                    running
+                  </span>
+                )}
               </div>
               {!currentLangConfig.isWebMode && (
-                <button 
-                  onClick={() => terminalRef.current?.clear()} 
-                  className="text-xs text-gray-400 hover:text-gray-200 transition-colors px-2 py-1 rounded"
-                >
+                <button onClick={() => terminalRef.current?.clear()} className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: '11px' }}>
                   Clear
                 </button>
               )}
             </div>
-            <div className="flex-1 overflow-hidden p-3 bg-[#0E1117] h-full flex flex-col">
+            <div className="flex-1 overflow-hidden">
               {currentLangConfig.isWebMode ? (
-                <LivePreview 
-                  code={code} 
-                  libraries={selectedLibraries} 
-                  language={currentLangConfig.id} 
-                />
+                <LivePreview files={files} code={code} libraries={selectedLibraries} language={currentLangConfig.id} />
               ) : (
-                <XTerminal 
-                  onTerminalReady={(api) => { terminalRef.current = api; }}
-                  wsClient={wsClientRef.current} 
-                  isRunning={isRunning} 
-                />
+                <div className="h-full p-2" style={{ background: 'var(--bg-base)' }}>
+                  <XTerminal
+                    onTerminalReady={(api: XTerminalRef) => { terminalRef.current = api; }}
+                    wsClient={wsClientRef.current} isRunning={isRunning}
+                  />
+                </div>
               )}
             </div>
           </Panel>
 
         </PanelGroup>
       </div>
+
+      {/* === STATUS BAR === */}
+      <footer className="h-[24px] flex items-center justify-between px-3 shrink-0 select-none"
+              style={{ background: 'var(--bg-raised)', borderTop: '1px solid var(--border-primary)' }}>
+        <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-ghost)' }}>
+          <span className="flex items-center gap-1.5">
+            <span className="dot dot-green" style={{ width: 5, height: 5 }} />
+            Ready
+          </span>
+          <span style={{ color: 'var(--border-secondary)' }}>|</span>
+          <span>{currentLangConfig.name}</span>
+        </div>
+        <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-ghost)', fontFamily: "'JetBrains Mono', monospace", fontSize: '10px' }}>
+          <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
+          <span style={{ color: 'var(--border-secondary)' }}>|</span>
+          <span>UTF-8</span>
+        </div>
+      </footer>
     </main>
   );
 }
