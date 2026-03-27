@@ -11,6 +11,7 @@ export interface LanguageConfig {
   defaultCode: string;
   isWebMode: boolean;
   isSpecial: boolean;
+  defaultFiles?: { name: string; content: string }[];
 }
 
 export interface ExecutionResult {

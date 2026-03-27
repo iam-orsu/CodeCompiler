@@ -16,10 +16,12 @@ export const LIBRARIES: MarketplaceLibrary[] = [
   { id: 'flowbite', name: 'Flowbite', type: 'ui', url: 'https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.3.0/flowbite.min.css', requires: ['tailwind'] },
   
   { id: 'jquery', name: 'jQuery', type: 'js', url: 'https://code.jquery.com/jquery-3.7.1.min.js' },
+  { id: 'axios', name: 'Axios', type: 'js', url: 'https://cdn.jsdelivr.net/npm/axios@1.7.2/dist/axios.min.js' },
   { id: 'lodash', name: 'Lodash', type: 'js', url: 'https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js' },
   { id: 'chartjs', name: 'Chart.js', type: 'js', url: 'https://cdn.jsdelivr.net/npm/chart.js' },
   { id: 'threejs', name: 'Three.js', type: 'js', url: 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js' },
   { id: 'gsap', name: 'GSAP', type: 'js', url: 'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js' },
+  { id: 'anime', name: 'Anime.js', type: 'js', url: 'https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js' },
   
   { id: 'fontawesome', name: 'FontAwesome', type: 'icon', url: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css' },
   { id: 'lucide', name: 'Lucide Icons', type: 'icon', url: 'https://unpkg.com/lucide@latest' }

@@ -173,7 +173,41 @@ setTimeout(() => {
 };
 
 const buildAngularPreview = (flatFiles: Record<string, string>, deps: string, activeCode: string) => {
-  return `<!DOCTYPE html><html><head>${deps || ''}<script crossorigin src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script></head><body ng-app="runlyApp">${activeCode || ''}<script>try { if (!angular.module('runlyApp')) angular.module('runlyApp', []); } catch(e) { angular.module('runlyApp', []); }</script></body></html>`;
+  let htmlContent = flatFiles['index.html'] || flatFiles['main.html'];
+  if (!htmlContent) {
+    const htmlFile = Object.keys(flatFiles).find(name => name.endsWith('.html'));
+    if (htmlFile) htmlContent = flatFiles[htmlFile];
+  }
+
+  if (!htmlContent) {
+    return `<!DOCTYPE html><html><head>${deps || ''}<script crossorigin src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script></head><body ng-app="runlyApp">${activeCode || ''}<script>try { if (!angular.module('runlyApp')) angular.module('runlyApp', []); } catch(e) { angular.module('runlyApp', []); }</script></body></html>`;
+  }
+
+  // Inline CSS files
+  htmlContent = htmlContent.replace(/<link\s+[^>]*href=["']([^"']+\.css)["'][^>]*>/gi, (match, href) => {
+    const cleanHref = href.replace(/^\.\//, '').replace(/^\//, '');
+    if (flatFiles[cleanHref] !== undefined) return `<style>\n${flatFiles[cleanHref]}\n</style>`;
+    return match;
+  });
+
+  // Inline JS/TS files
+  htmlContent = htmlContent.replace(/<script\s+[^>]*src=["']([^"']+\.(js|ts))["'][^>]*><\/script>/gi, (match, src) => {
+    const cleanSrc = src.replace(/^\.\//, '').replace(/^\//, '');
+    if (flatFiles[cleanSrc] !== undefined) return `<script>\n${flatFiles[cleanSrc]}\n</script>`;
+    return match;
+  });
+
+  // Inject AngularJS CDN + marketplace deps
+  const headInject = `${deps || ''}\n<script crossorigin src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>`;
+  if (htmlContent.includes('</head>')) {
+    htmlContent = htmlContent.replace('</head>', `${headInject}\n</head>`);
+  } else if (htmlContent.includes('</body>')) {
+    htmlContent = htmlContent.replace('</body>', `${headInject}\n</body>`);
+  } else {
+    htmlContent = `${headInject}\n${htmlContent}`;
+  }
+
+  return `<!DOCTYPE html><html><head></head><body>${htmlContent}</body></html>`;
 };
 
 const generatePreviewHtml = (files: FileNode[], language: string, libraries: string[], activeCode: string) => {

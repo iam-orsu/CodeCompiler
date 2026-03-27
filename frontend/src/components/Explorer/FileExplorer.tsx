@@ -70,10 +70,11 @@ export default function FileExplorer({ files, setFiles, activeFileId, onFileSele
 
   const handleCreate = (type: FileNodeType) => {
     const id = Date.now().toString();
-    const node: FileNode = { id, name: type === 'folder' ? 'new_folder' : 'new_file.txt', type, isOpen: type === 'folder' ? true : undefined, children: type === 'folder' ? [] : undefined, content: type === 'file' ? '' : undefined };
+    const defaultName = type === 'folder' ? 'new_folder' : '';
+    const node: FileNode = { id, name: defaultName, type, isOpen: type === 'folder' ? true : undefined, children: type === 'folder' ? [] : undefined, content: type === 'file' ? '' : undefined };
     setFiles(prev => [...prev, node]);
     setEditingId(id);
-    setEditValue(node.name);
+    setEditValue(defaultName);
   };
 
   const commitRename = (id: string, name: string) => {

@@ -51,13 +51,28 @@ export default function Home() {
         const extMap: Record<string, string> = {
           python: 'py', javascript: 'js', typescript: 'ts', c: 'c', cpp: 'cpp',
           java: 'java', go: 'go', rust: 'rs', php: 'php', r: 'R',
-          csharp: 'cs', html: 'html', react: 'jsx', vue: 'vue',
-          angular: 'ts', sqlite: 'sql', mongodb: 'js',
+          csharp: 'cs', html: 'html', react: 'jsx', vue: 'html',
+          angular: 'html', sqlite: 'sql', mongodb: 'js',
         };
         const ext = extMap[target.id] || 'txt';
-        const fileId = `file-${Date.now()}`;
-        setFiles([{ id: fileId, name: `main.${ext}`, type: 'file', content: target.defaultCode }]);
-        setActiveFileId(fileId);
+        const mainFileId = `file-${Date.now()}`;
+        const mainFile: FileNode = { id: mainFileId, name: `main.${ext}`, type: 'file', content: target.defaultCode };
+
+        // Load additional default files for multi-file web projects
+        const allFiles: FileNode[] = [mainFile];
+        if (target.defaultFiles) {
+          target.defaultFiles.forEach((df, i) => {
+            allFiles.push({
+              id: `file-${Date.now()}-${i + 1}`,
+              name: df.name,
+              type: 'file',
+              content: df.content,
+            });
+          });
+        }
+
+        setFiles(allFiles);
+        setActiveFileId(mainFileId);
       }
     }
   }, [currentLangId, languages]);
@@ -141,6 +156,18 @@ export default function Home() {
 
   const activeFileName = files.find(f => f.id === activeFileId)?.name || '';
 
+  // Detect Monaco language from file extension for correct syntax highlighting
+  const getEditorLanguage = (): string => {
+    if (!activeFileName) return currentLangConfig.monacoLanguage;
+    const ext = activeFileName.split('.').pop()?.toLowerCase();
+    const extLangMap: Record<string, string> = {
+      css: 'css', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+      html: 'html', json: 'json', md: 'markdown', py: 'python', vue: 'html',
+      sql: 'sql', xml: 'xml', yaml: 'yaml', yml: 'yaml',
+    };
+    return extLangMap[ext || ''] || currentLangConfig.monacoLanguage;
+  };
+
   if (loading || !currentLangConfig) {
     return (
       <div className="h-screen w-screen flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
@@ -217,7 +244,7 @@ export default function Home() {
             {/* Editor */}
             <div className="flex-1 overflow-hidden">
               <CodeEditor
-                language={currentLangConfig.monacoLanguage as LanguageId}
+                language={getEditorLanguage() as LanguageId}
                 value={code} onChange={handleEditorChange} readOnly={isRunning}
                 onCursorChange={setCursorPos}
               />
