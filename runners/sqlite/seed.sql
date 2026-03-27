@@ -53,4 +53,5 @@ INSERT INTO actors VALUES (8, 'Salman Khan', 1965, 'Indian');
 INSERT INTO actors VALUES (9, 'Ranbir Kapoor', 1982, 'Indian');
 
 .headers on
-.mode column
+.mode list
+.separator " | "

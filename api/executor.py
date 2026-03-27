@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT_INTERPRETED = int(os.getenv("EXECUTION_TIMEOUT_INTERPRETED", "15"))
 TIMEOUT_COMPILED = int(os.getenv("EXECUTION_TIMEOUT_COMPILED", "30"))
-COMPILED_LANGS = {"c", "cpp", "java", "go", "rust", "csharp"}
+COMPILED_LANGS = {"c", "cpp", "java", "go", "rust", "csharp", "mongodb"}
 
 docker_client = docker.from_env()
 
@@ -52,16 +52,26 @@ async def execute_code(ws: WebSocket, lang: str, code: str):
 
     loop = asyncio.get_running_loop()
     filename = LANGUAGES[lang]
+
+    # Java: public class name must match filename
+    if lang == "java":
+        import re
+        match = re.search(r'public\s+class\s+(\w+)', code)
+        if match:
+            filename = f"{match.group(1)}.java"
+
     tar_data = create_tar(filename, code)
 
     try:
         await loop.run_in_executor(None, lambda: container.put_archive("/code", tar_data))
-        await loop.run_in_executor(None, container.start)
     except Exception as e:
-        await ws.send_json({"type": "stderr", "data": f"Failed to start container: {e}\n"})
+        await ws.send_json({"type": "stderr", "data": f"Failed to prepare container: {e}\n"})
         asyncio.create_task(cleanup_container(container))
         return
 
+    # CRITICAL: Attach socket BEFORE starting the container.
+    # Otherwise fast commands (SQLite, etc.) finish before socket is ready
+    # and output is lost.
     try:
         sock = await loop.run_in_executor(
             None, 
@@ -73,6 +83,17 @@ async def execute_code(ws: WebSocket, lang: str, code: str):
         sock._sock.setblocking(False)
     except Exception as e:
         await ws.send_json({"type": "stderr", "data": f"Socket attach failed: {e}\n"})
+        asyncio.create_task(cleanup_container(container))
+        return
+
+    try:
+        await loop.run_in_executor(None, container.start)
+    except Exception as e:
+        await ws.send_json({"type": "stderr", "data": f"Failed to start container: {e}\n"})
+        try:
+            sock._sock.close()
+        except Exception:
+            pass
         asyncio.create_task(cleanup_container(container))
         return
 

@@ -144,30 +144,30 @@ SELECT * FROM movies;
 // Try these queries (edit and click Run):
 
 // 1. Show all movies
-printjson(db.movies.find({}, { _id: 0, title: 1, lead_actor: 1, release_year: 1 }).toArray());
+db.movies.find({}, { _id: 0, title: 1, lead_actor: 1, release_year: 1 }).forEach(printjson);
 
 // 2. Telugu blockbusters (500cr+)
-// printjson(db.movies.find(
+// db.movies.find(
 //   { language: "Telugu", box_office_cr: { $gt: 500 } },
 //   { _id: 0, title: 1, lead_actor: 1, box_office_cr: 1 }
-// ).sort({ box_office_cr: -1 }).toArray());
+// ).sort({ box_office_cr: -1 }).forEach(printjson);
 
 // 3. Top rated movies
-// printjson(db.movies.find(
+// db.movies.find(
 //   { rating: { $gte: 8.0 } },
 //   { _id: 0, title: 1, rating: 1 }
-// ).sort({ rating: -1 }).toArray());
+// ).sort({ rating: -1 }).forEach(printjson);
 
 // 4. Movies by director
-// printjson(db.movies.find(
+// db.movies.find(
 //   { director: "S.S. Rajamouli" },
 //   { _id: 0, title: 1, release_year: 1, rating: 1 }
-// ).toArray());
+// ).forEach(printjson);
 
 // 5. Count movies per language
-// printjson(db.movies.aggregate([
+// db.movies.aggregate([
 //   { $group: { _id: "$language", total: { $sum: 1 }, avg_rating: { $avg: "$rating" } } }
-// ]).toArray());`,
+// ]).forEach(printjson);`,
     isWebMode: false,
     isSpecial: true
   },

@@ -36,6 +36,7 @@ MEM_OVERRIDES = {
     "rust": "512m",
     "csharp": "512m",
     "java": "384m",
+    "mongodb": "768m",
 }
 
 cpu_quota = int(MAX_CPU * 100000)
@@ -51,7 +52,7 @@ TMPFS_MOUNTS = {
     "go": {"/tmp": "rw,exec,nosuid,size=512m"},
     "java": {"/tmp": "rw,exec,nosuid,size=64m"},
     "typescript": {"/tmp": "rw,exec,nosuid,size=64m"},
-    "mongodb": {"/tmp/mongo_data": "rw,exec,nosuid,size=128m"}
+    "mongodb": {"/tmp/mongo_data": "rw,exec,nosuid,size=512m,uid=1000,gid=1000"}
 }
 
 async def create_container_async(lang: str):
@@ -60,6 +61,24 @@ async def create_container_async(lang: str):
         filename = f"/code/{LANGUAGES[lang]}"
         tmpfs = TMPFS_MOUNTS.get(lang, None)
         mem = MEM_OVERRIDES.get(lang, MAX_RAM)
+
+        # MongoDB needs relaxed security to run mongod
+        if lang == "mongodb":
+            return docker_client.containers.create(
+                image=f"runly-runner-{lang}",
+                command=[filename],
+                network_mode="none",
+                security_opt=["no-new-privileges"],
+                user="1000",
+                mem_limit=mem,
+                cpu_quota=cpu_quota,
+                cpu_period=cpu_period,
+                tty=True,
+                stdin_open=True,
+                detach=True,
+                tmpfs=tmpfs
+            )
+
         return docker_client.containers.create(
             image=f"runly-runner-{lang}",
             command=[filename],
