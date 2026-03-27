@@ -12,8 +12,9 @@ RUN if getent passwd 1000; then userdel -r $(id -un 1000); fi && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /code
+COPY seed.js /seed.js
+RUN chown runner:runner /seed.js
 USER runner
 
-# Start an ephemeral mongod in the background, wait for it to boot, run the user script, then exit
-# The container itself will be destroyed right after, taking the in-memory/temp data with it.
-ENTRYPOINT ["sh", "-c", "mongod --dbpath /tmp/mongo_data --fork --logpath /dev/null && sleep 2 && mongosh test_db < $1", "--"]
+# Start an ephemeral mongod, seed data first, then run user script
+ENTRYPOINT ["sh", "-c", "mongod --dbpath /tmp/mongo_data --fork --logpath /dev/null && sleep 2 && mongosh --quiet test_db /seed.js && mongosh --quiet test_db < $1", "--"]

@@ -94,7 +94,39 @@ export const LANGUAGES: LanguageConfig[] = [
     id: 'sqlite',
     name: 'SQLite',
     monacoLanguage: 'sql',
-    defaultCode: 'CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);\nINSERT INTO users (name) VALUES ("Runly");\nSELECT * FROM users;',
+    defaultCode: `-- Database is pre-loaded with Indian movies!
+-- Tables: movies, actors
+--
+-- movies: id, title, language, genre, lead_actor,
+--         lead_actress, director, release_year, rating, box_office_cr
+-- actors: id, name, born_year, nationality
+--
+-- Try these queries (edit and click Run):
+
+-- 1. Show all movies
+SELECT * FROM movies;
+
+-- 2. Telugu blockbusters (500cr+)
+-- SELECT title, lead_actor, box_office_cr
+-- FROM movies
+-- WHERE language = 'Telugu' AND box_office_cr > 500
+-- ORDER BY box_office_cr DESC;
+
+-- 3. Top rated movies
+-- SELECT title, rating, release_year
+-- FROM movies
+-- WHERE rating >= 8.0
+-- ORDER BY rating DESC;
+
+-- 4. Movies by director
+-- SELECT title, release_year, rating
+-- FROM movies
+-- WHERE director = 'S.S. Rajamouli';
+
+-- 5. Count movies by language
+-- SELECT language, COUNT(*) as total, ROUND(AVG(rating), 1) as avg_rating
+-- FROM movies
+-- GROUP BY language;`,
     isWebMode: false,
     isSpecial: true
   },
@@ -102,7 +134,40 @@ export const LANGUAGES: LanguageConfig[] = [
     id: 'mongodb',
     name: 'MongoDB',
     monacoLanguage: 'javascript',
-    defaultCode: 'db.users.insertOne({ name: "Runly" });\nprintjson(db.users.find().toArray());',
+    defaultCode: `// Database is pre-loaded with Indian movies!
+// Collections: movies, actors
+//
+// movies: title, language, genre, lead_actor,
+//         lead_actress, director, release_year, rating, box_office_cr
+// actors: name, born_year, nationality
+//
+// Try these queries (edit and click Run):
+
+// 1. Show all movies
+printjson(db.movies.find({}, { _id: 0, title: 1, lead_actor: 1, release_year: 1 }).toArray());
+
+// 2. Telugu blockbusters (500cr+)
+// printjson(db.movies.find(
+//   { language: "Telugu", box_office_cr: { $gt: 500 } },
+//   { _id: 0, title: 1, lead_actor: 1, box_office_cr: 1 }
+// ).sort({ box_office_cr: -1 }).toArray());
+
+// 3. Top rated movies
+// printjson(db.movies.find(
+//   { rating: { $gte: 8.0 } },
+//   { _id: 0, title: 1, rating: 1 }
+// ).sort({ rating: -1 }).toArray());
+
+// 4. Movies by director
+// printjson(db.movies.find(
+//   { director: "S.S. Rajamouli" },
+//   { _id: 0, title: 1, release_year: 1, rating: 1 }
+// ).toArray());
+
+// 5. Count movies per language
+// printjson(db.movies.aggregate([
+//   { $group: { _id: "$language", total: { $sum: 1 }, avg_rating: { $avg: "$rating" } } }
+// ]).toArray());`,
     isWebMode: false,
     isSpecial: true
   },
