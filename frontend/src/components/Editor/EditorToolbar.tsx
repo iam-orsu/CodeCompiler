@@ -20,7 +20,7 @@ interface EditorToolbarProps {
 const EMOJI: Record<string, string> = {
   python: '🐍', javascript: '🟡', typescript: '🔷', c: '🔵', cpp: '🔵',
   java: '☕', go: '🔹', rust: '🦀', php: '🐘',
-  r: '📊', csharp: '🟣', ruby: '💎', html: '🌐', react: '⚛️',
+  r: '📊', csharp: '🟣', html: '🌐', react: '⚛️',
   vue: '💚', angular: '🔺', sqlite: '🗃️', mongodb: '🍃',
 };
 

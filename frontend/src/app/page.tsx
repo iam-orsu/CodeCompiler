@@ -11,9 +11,9 @@ import LivePreview from '../components/Preview/LivePreview';
 import { RunlyWebSocket } from '../lib/ws';
 import { XTerminalRef } from '../components/Terminal/XTerminal';
 import FileExplorer, { FileNode } from '../components/Explorer/FileExplorer';
-import { Github, Wifi, WifiOff } from 'lucide-react';
+import { Github } from 'lucide-react';
 
-const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), { 
+const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), {
   ssr: false,
   loading: () => (
     <div className="flex h-full items-center justify-center" style={{ background: 'var(--bg-base)' }}>
@@ -25,7 +25,7 @@ const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), {
 const LANG_EMOJI: Record<string, string> = {
   python: '🐍', javascript: '🟡', typescript: '🔷', c: '🔵', cpp: '🔵',
   java: '☕', go: '🔹', rust: '🦀', php: '🐘',
-  r: '📊', csharp: '🟣', ruby: '💎', html: '🌐', react: '⚛️',
+  r: '📊', csharp: '🟣', html: '🌐', react: '⚛️',
   vue: '💚', angular: '🔺', sqlite: '🗃️', mongodb: '🍃',
 };
 
@@ -51,7 +51,7 @@ export default function Home() {
         const extMap: Record<string, string> = {
           python: 'py', javascript: 'js', typescript: 'ts', c: 'c', cpp: 'cpp',
           java: 'java', go: 'go', rust: 'rs', php: 'php', r: 'R',
-          csharp: 'cs', ruby: 'rb', html: 'html', react: 'jsx', vue: 'vue',
+          csharp: 'cs', html: 'html', react: 'jsx', vue: 'vue',
           angular: 'ts', sqlite: 'sql', mongodb: 'js',
         };
         const ext = extMap[target.id] || 'txt';
@@ -156,14 +156,14 @@ export default function Home() {
     <main className="flex flex-col h-screen w-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
       {/* === HEADER === */}
       <header className="h-[48px] flex items-center justify-between px-4 shrink-0 select-none"
-              style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
+        style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
         <div className="flex items-center gap-3">
           {/* Logo */}
           <div className="flex items-center gap-2.5">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
               <rect width="24" height="24" rx="6" fill="url(#logo-grad)" />
-              <path d="M7 8l5 4-5 4M13 16h4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="24" y2="24"><stop stopColor="#3b82f6"/><stop offset="1" stopColor="#2563eb"/></linearGradient></defs>
+              <path d="M7 8l5 4-5 4M13 16h4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="24" y2="24"><stop stopColor="#3b82f6" /><stop offset="1" stopColor="#2563eb" /></linearGradient></defs>
             </svg>
             <span className="text-[14px] font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
               Runly<span style={{ color: 'var(--blue-500)' }}>.dev</span>
@@ -176,7 +176,7 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-1">
           <a href="https://github.com/iam-orsu/CodeCompiler" target="_blank" rel="noopener noreferrer"
-             className="btn btn-ghost" style={{ fontSize: '12px' }}>
+            className="btn btn-ghost" style={{ fontSize: '12px' }}>
             <Github size={14} />
             <span className="hidden sm:inline">GitHub</span>
           </a>
@@ -189,7 +189,7 @@ export default function Home() {
 
           {/* File Explorer */}
           <Panel defaultSize={14} minSize={10} className="hidden md:flex flex-col"
-                 style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-primary)' }}>
+            style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-primary)' }}>
             <FileExplorer files={files} setFiles={setFiles} activeFileId={activeFileId} onFileSelect={handleFileSelect} />
           </Panel>
           <PanelResizeHandle className="resize-handle hidden md:block" />
@@ -206,9 +206,9 @@ export default function Home() {
             {/* Tab bar */}
             {activeFileName && (
               <div className="flex items-center h-[34px] px-1 shrink-0"
-                   style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
+                style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
                 <div className="flex items-center gap-1.5 px-3 h-full text-[12px] relative"
-                     style={{ color: 'var(--text-primary)', background: 'var(--bg-base)', borderTop: '2px solid var(--blue-500)', borderRadius: '0' }}>
+                  style={{ color: 'var(--text-primary)', background: 'var(--bg-base)', borderTop: '2px solid var(--blue-500)', borderRadius: '0' }}>
                   <span className="text-[13px]">{LANG_EMOJI[currentLangId] || '📄'}</span>
                   <span className="font-medium">{activeFileName}</span>
                 </div>
@@ -228,10 +228,10 @@ export default function Home() {
 
           {/* Console/Preview Panel */}
           <Panel defaultSize={34} minSize={20} className="flex flex-col"
-                 style={{ background: 'var(--bg-base)', borderLeft: '1px solid var(--border-primary)' }}>
+            style={{ background: 'var(--bg-base)', borderLeft: '1px solid var(--border-primary)' }}>
             {/* Console Header */}
             <div className="flex items-center justify-between h-[44px] px-4 shrink-0"
-                 style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
+              style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
               <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>
                 <span style={{ color: 'var(--text-ghost)', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px' }}>{'>'}_</span>
                 <span>{currentLangConfig.isWebMode ? 'Preview' : 'Console'}</span>
@@ -267,7 +267,7 @@ export default function Home() {
 
       {/* === STATUS BAR === */}
       <footer className="h-[24px] flex items-center justify-between px-3 shrink-0 select-none"
-              style={{ background: 'var(--bg-raised)', borderTop: '1px solid var(--border-primary)' }}>
+        style={{ background: 'var(--bg-raised)', borderTop: '1px solid var(--border-primary)' }}>
         <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-ghost)' }}>
           <span className="flex items-center gap-1.5">
             <span className="dot dot-green" style={{ width: 5, height: 5 }} />

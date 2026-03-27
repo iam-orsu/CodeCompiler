@@ -1,7 +1,7 @@
 export type LanguageId = 
   | 'python' | 'javascript' | 'typescript' | 'c' | 'cpp' 
   | 'java' | 'go' | 'rust' | 'php' | 'r' 
-  | 'csharp' | 'ruby' | 'sqlite' | 'mongodb' 
+  | 'csharp' | 'sqlite' | 'mongodb' 
   | 'html' | 'react' | 'vue' | 'angular';
 
 export interface LanguageConfig {

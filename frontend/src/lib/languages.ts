@@ -89,14 +89,6 @@ export const LANGUAGES: LanguageConfig[] = [
     isWebMode: false,
     isSpecial: false
   },
-  {
-    id: 'ruby',
-    name: 'Ruby',
-    monacoLanguage: 'ruby',
-    defaultCode: 'puts "Hello Ruby!"',
-    isWebMode: false,
-    isSpecial: false
-  },
 
   {
     id: 'sqlite',

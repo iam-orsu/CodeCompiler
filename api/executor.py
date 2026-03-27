@@ -4,15 +4,18 @@ import tarfile
 import io
 import time
 import os
+import logging
 from fastapi import WebSocket, WebSocketDisconnect
 from pool import get_container, LANGUAGES
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 TIMEOUT_INTERPRETED = int(os.getenv("EXECUTION_TIMEOUT_INTERPRETED", "15"))
 TIMEOUT_COMPILED = int(os.getenv("EXECUTION_TIMEOUT_COMPILED", "30"))
-COMPILED_LANGS = {"c", "cpp", "java", "go", "rust", "scala", "csharp"}
+COMPILED_LANGS = {"c", "cpp", "java", "go", "rust", "csharp"}
 
 docker_client = docker.from_env()
 
@@ -30,11 +33,11 @@ def create_tar(filename: str, code: str) -> bytes:
     return tar_stream.getvalue()
 
 async def cleanup_container(container):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         await loop.run_in_executor(None, lambda: container.remove(force=True))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Container cleanup error (non-critical): {e}")
 
 async def execute_code(ws: WebSocket, lang: str, code: str):
     if lang not in LANGUAGES:
@@ -47,7 +50,7 @@ async def execute_code(ws: WebSocket, lang: str, code: str):
         await ws.send_json({"type": "stderr", "data": f"System error getting container: {str(e)}\n"})
         return
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     filename = LANGUAGES[lang]
     tar_data = create_tar(filename, code)
 
@@ -82,8 +85,10 @@ async def execute_code(ws: WebSocket, lang: str, code: str):
                 if not data:
                     break
                 await ws.send_json({"type": "stdout", "data": data.decode('utf-8', errors='replace')})
-        except Exception:
+        except (OSError, ConnectionError):
             pass
+        except Exception as e:
+            logger.debug(f"Read error: {e}")
 
     async def write_to_container():
         try:
@@ -93,8 +98,10 @@ async def execute_code(ws: WebSocket, lang: str, code: str):
                     await loop.sock_sendall(sock._sock, msg["data"].encode('utf-8'))
         except WebSocketDisconnect:
             pass
-        except Exception:
+        except (OSError, ConnectionError):
             pass
+        except Exception as e:
+            logger.debug(f"Write error: {e}")
 
     async def wait_for_exit():
         # wait blocks synchronously until execution is done
@@ -106,20 +113,25 @@ async def execute_code(ws: WebSocket, lang: str, code: str):
 
     try:
         await asyncio.wait_for(wait_task, timeout=timeout)
-        # Give the socket a tiny fraction of a second to flush the final output streams
-        await asyncio.wait([read_task], timeout=0.1)
+        # Give the socket a moment to flush the final output
+        await asyncio.sleep(0.1)
     except asyncio.TimeoutError:
         await ws.send_json({"type": "stderr", "data": f"\nExecution timed out ({timeout}s)"})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Execution error: {e}")
     finally:
         write_task.cancel()
         read_task.cancel()
         wait_task.cancel()
+        # Close the raw socket to prevent fd leaks
+        try:
+            sock._sock.close()
+        except Exception:
+            pass
         asyncio.create_task(cleanup_container(container))
         
         try:
             await ws.send_json({"type": "exit", "data": "Process exited"})
             await ws.close()
-        except:
+        except Exception:
             pass

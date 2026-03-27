@@ -22,7 +22,6 @@ LANGUAGES = {
     "php": "main.php",
     "r": "main.R",
     "csharp": "main.cs",
-    "ruby": "main.rb",
     "sqlite": "main.sql",
     "mongodb": "main.js"
 }
@@ -56,7 +55,7 @@ TMPFS_MOUNTS = {
 }
 
 async def create_container_async(lang: str):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     def _create():
         filename = f"/code/{LANGUAGES[lang]}"
         tmpfs = TMPFS_MOUNTS.get(lang, None)

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getInjectionHtml } from '../../lib/marketplace';
 import { FileNode } from '../Explorer/FileExplorer';
-import { Code2 } from 'lucide-react';
 
 export function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
