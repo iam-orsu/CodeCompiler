@@ -1,16 +1,16 @@
 #!/bin/sh
-export HOME=/tmp
+export HOME=/home/runner
+export MONGOSH_DISABLE_UPDATES=1
+export MONGOSH_DISABLE_TELEMETRY=1
 
-# Copy pre-built database files from image to tmpfs
-cp -a /data/prebuilt/. /tmp/mongo_data/ 2>/dev/null
-
-# Start mongod with limited cache (100MB instead of default 256MB)
+# Start mongod gracefully at runtime
 mongod --dbpath /tmp/mongo_data --bind_ip 127.0.0.1 --wiredTigerCacheSizeGB 0.25 > /tmp/mongod.log 2>&1 &
+MONGOPID=$!
 
-# Wait for port 27017 to be open (fast check, no 30s mongosh timeout)
+# Wait for MongoDB to become ready
 READY=0
-for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-  if mongosh "mongodb://127.0.0.1:27017/?serverSelectionTimeoutMS=500" --quiet --eval "1" > /dev/null 2>&1; then
+for i in $(seq 1 30); do
+  if mongosh "mongodb://127.0.0.1:27017/?serverSelectionTimeoutMS=500" --quiet --eval "db.adminCommand('ping')" > /dev/null 2>&1; then
     READY=1
     break
   fi
@@ -18,10 +18,16 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
 done
 
 if [ "$READY" = "0" ]; then
-  echo "ERROR: MongoDB failed to start."
+  echo "ERROR: MongoDB failed to start during runtime initialization."
   cat /tmp/mongod.log
   exit 1
 fi
 
-# Run user script
+# Seed the database synchronously (ensures all data is present before queries)
+mongosh --quiet --norc test_db /seed.js > /dev/null 2>&1
+
+# Run the user script
 mongosh --quiet --norc test_db "$1"
+
+# Automatically shut down by Docker when script finishes
+
