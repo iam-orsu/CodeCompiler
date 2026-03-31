@@ -1,6 +1,6 @@
 FROM python:3.12-alpine
 LABEL language="python" version="3.12"
-ENV LANG=C.UTF-8
+ENV LANG=C.UTF-8 PYTHONUNBUFFERED=1
 RUN OLD_USER=$(awk -F: '$3 == 1000 {print $1}' /etc/passwd); if [ -n "$OLD_USER" ]; then deluser "$OLD_USER"; fi; adduser -D -u 1000 runner
 WORKDIR /code
 USER runner

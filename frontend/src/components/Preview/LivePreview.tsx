@@ -1,15 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getInjectionHtml } from '../../lib/marketplace';
 import { FileNode } from '../Explorer/FileExplorer';
-
-export function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  useEffect(() => {
-    const timer = setTimeout(() => { setDebouncedValue(value); }, delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debouncedValue;
-}
+import { useDebounce } from '../../hooks/useDebounce';
 
 const flattenFiles = (nodes: FileNode[], path = ''): Record<string, string> => {
   let result: Record<string, string> = {};
@@ -251,7 +243,7 @@ export default function LivePreview({ files, code, libraries, language }: LivePr
           key={language}
           srcDoc={srcDoc}
           title="Live Preview"
-          sandbox="allow-scripts allow-modals allow-same-origin"
+          sandbox="allow-scripts allow-modals"
           className="w-full h-full border-none bg-white block"
         />
       </div>

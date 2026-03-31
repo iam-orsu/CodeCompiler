@@ -5,9 +5,6 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Create a non-root user with UID 1000
-RUN useradd -m -u 1000 runlyuser
-
 # Set working directory
 WORKDIR /app
 

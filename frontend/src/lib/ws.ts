@@ -1,3 +1,10 @@
+export type WsStatusType = 'start' | 'exit' | 'error' | 'close';
+
+export interface WsStatus {
+  type: WsStatusType;
+  data?: string | Event;
+}
+
 export class RunlyWebSocket {
   private ws: WebSocket | null = null;
   private isConnected = false;
@@ -6,7 +13,7 @@ export class RunlyWebSocket {
     language: string, 
     code: string, 
     onOutput: (data: string) => void, 
-    onStatus: (status: any) => void
+    onStatus: (status: WsStatus) => void
   ) {
     if (this.ws) {
       this.ws.close();
@@ -14,11 +21,7 @@ export class RunlyWebSocket {
 
     const host = window.location.host;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    
-    let wsUrl = `${protocol}//${host}/ws/execute`;
-    if (host.includes('localhost:3000') || host.includes('127.0.0.1:3000')) {
-      wsUrl = 'ws://localhost:8000/ws/execute'; 
-    }
+    const wsUrl = `${protocol}//${host}/ws/execute`;
 
     this.ws = new WebSocket(wsUrl);
 

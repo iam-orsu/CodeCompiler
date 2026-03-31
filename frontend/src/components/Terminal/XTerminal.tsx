@@ -4,9 +4,10 @@ import React, { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { RunlyWebSocket } from '../../lib/ws';
 
 interface XTerminalProps {
-  wsClient: any;
+  wsClient: RunlyWebSocket | null;
   isRunning: boolean;
   onTerminalReady?: (api: XTerminalRef) => void;
 }

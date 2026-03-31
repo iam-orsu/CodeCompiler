@@ -5,10 +5,11 @@ import dynamic from 'next/dynamic';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useLanguages } from '../hooks/useLanguages';
 import { LanguageId, LanguageConfig } from '../types';
+import { LANG_EMOJI } from '../lib/languages';
 import EditorToolbar from '../components/Editor/EditorToolbar';
 import CodeEditor from '../components/Editor/CodeEditor';
 import LivePreview from '../components/Preview/LivePreview';
-import { RunlyWebSocket } from '../lib/ws';
+import { RunlyWebSocket, WsStatus } from '../lib/ws';
 import { XTerminalRef } from '../components/Terminal/XTerminal';
 import FileExplorer, { FileNode } from '../components/Explorer/FileExplorer';
 import { Github } from 'lucide-react';
@@ -22,12 +23,7 @@ const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), {
   ),
 });
 
-const LANG_EMOJI: Record<string, string> = {
-  python: '🐍', javascript: '🟡', typescript: '🔷', c: '🔵', cpp: '🔵',
-  java: '☕', go: '🔹', rust: '🦀', php: '🐘',
-  r: '📊', csharp: '🟣', html: '🌐', react: '⚛️',
-  vue: '💚', angular: '🔺', sqlite: '🗃️', mongodb: '🍃',
-};
+
 
 export default function Home() {
   const { languages, loading } = useLanguages();
@@ -121,7 +117,7 @@ export default function Home() {
     ws.executeCode(
       currentLangConfig.id, code,
       (data: string) => { terminalRef.current?.write(data.replace(/\n/g, '\r\n')); },
-      (status: { type: string }) => {
+      (status: WsStatus) => {
         if (status.type === 'start') {
           terminalRef.current?.write(`\x1b[38;5;244m$ Running ${currentLangConfig.name}...\x1b[0m\r\n\r\n`);
         } else if (status.type === 'exit') {

@@ -1,5 +1,12 @@
 import { LanguageId, LanguageConfig } from '../types';
 
+export const LANG_EMOJI: Record<string, string> = {
+  python: '🐍', javascript: '🟡', typescript: '🔷', c: '🔵', cpp: '🔵',
+  java: '☕', go: '🔹', rust: '🦀', php: '🐘',
+  r: '📊', csharp: '🟣', html: '🌐', react: '⚛️',
+  vue: '💚', angular: '🔺', sqlite: '🗃️', mongodb: '🍃',
+};
+
 export const LANGUAGES: LanguageConfig[] = [
   {
     id: 'python',

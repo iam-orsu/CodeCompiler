@@ -3,8 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Square, ChevronDown, Zap, Package } from 'lucide-react';
 import { useLanguages } from '../../hooks/useLanguages';
-import { LanguageId } from '../../types';
+import { LanguageId, LanguageConfig } from '../../types';
 import { LIBRARIES } from '../../lib/marketplace';
+import { LANG_EMOJI } from '../../lib/languages';
 
 interface EditorToolbarProps {
   language: LanguageId;
@@ -18,12 +19,7 @@ interface EditorToolbarProps {
   onLibraryChange: (libs: string[]) => void;
 }
 
-const EMOJI: Record<string, string> = {
-  python: '🐍', javascript: '🟡', typescript: '🔷', c: '🔵', cpp: '🔵',
-  java: '☕', go: '🔹', rust: '🦀', php: '🐘',
-  r: '📊', csharp: '🟣', html: '🌐', react: '⚛️',
-  vue: '💚', angular: '🔺', sqlite: '🗃️', mongodb: '🍃',
-};
+
 
 const LIB_ICON: Record<string, string> = {
   css: '🎨', ui: '🧩', js: '⚡', icon: '✦',
@@ -52,12 +48,12 @@ export default function EditorToolbar({
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const current = languages.find((l: any) => l.id === language);
-  const pendingConfig = languages.find((l: any) => l.id === pending);
-  const filter = (list: any[]) => search ? list.filter((l: any) => l.name.toLowerCase().includes(search.toLowerCase())) : list;
-  const prog = filter(languages.filter((l: any) => !l.isWebMode && !l.isSpecial));
-  const web = filter(languages.filter((l: any) => l.isWebMode));
-  const db = filter(languages.filter((l: any) => l.isSpecial));
+  const current = languages.find((l: LanguageConfig) => l.id === language);
+  const pendingConfig = languages.find((l: LanguageConfig) => l.id === pending);
+  const filter = (list: LanguageConfig[]) => search ? list.filter((l: LanguageConfig) => l.name.toLowerCase().includes(search.toLowerCase())) : list;
+  const prog = filter(languages.filter((l: LanguageConfig) => !l.isWebMode && !l.isSpecial));
+  const web = filter(languages.filter((l: LanguageConfig) => l.isWebMode));
+  const db = filter(languages.filter((l: LanguageConfig) => l.isSpecial));
 
   const pick = (id: LanguageId) => { if (id !== language) setPending(id); setOpen(false); setSearch(''); };
   const confirm = () => { if (pending) { onLanguageChange(pending); setPending(null); } };
@@ -84,10 +80,10 @@ export default function EditorToolbar({
   const jsLibs = LIBRARIES.filter(l => l.type === 'js');
   const iconLibs = LIBRARIES.filter(l => l.type === 'icon');
 
-  const Section = ({ title, items }: { title: string; items: any[] }) => items.length === 0 ? null : (
+  const Section = ({ title, items }: { title: string; items: LanguageConfig[] }) => items.length === 0 ? null : (
     <>
       <div className="text-[10px] font-semibold uppercase tracking-wider px-3 pt-2.5 pb-1" style={{ color: 'var(--text-ghost)' }}>{title}</div>
-      {items.map((l: any) => (
+      {items.map((l: LanguageConfig) => (
         <button key={l.id} onClick={() => pick(l.id)}
           className="flex items-center gap-2 w-[calc(100%-8px)] mx-1 px-2 py-[5px] text-[12px] rounded-md transition-colors"
           style={{
@@ -98,7 +94,7 @@ export default function EditorToolbar({
           onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => { if (language !== l.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
           onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => { if (language !== l.id) e.currentTarget.style.background = 'transparent'; }}
         >
-          <span className="text-[13px] w-5 text-center">{EMOJI[l.id] || '📄'}</span>
+          <span className="text-[13px] w-5 text-center">{LANG_EMOJI[l.id] || '📄'}</span>
           {l.name}
           {language === l.id && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: 'var(--blue-500)' }} />}
         </button>
@@ -157,7 +153,7 @@ export default function EditorToolbar({
             <button onClick={() => setOpen(!open)}
               className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] font-medium transition-colors"
               style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-primary)', color: 'var(--text-primary)' }}>
-              <span className="text-[13px]">{EMOJI[language] || '📄'}</span>
+              <span className="text-[13px]">{LANG_EMOJI[language] || '📄'}</span>
               {current?.name || 'Select'}
               <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: 'var(--text-muted)' }} />
             </button>

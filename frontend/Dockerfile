@@ -1,48 +1,37 @@
-# Node 20 Alpine base for builder stage
-FROM node:20-alpine AS builder
-
-# Set working directory
+# --- Stage 1: Dependencies ---
+FROM node:20-alpine AS deps
 WORKDIR /app
-
-# Copy package files for clean install
 COPY package.json package-lock.json* ./
-
-# Perform a clean install of dependencies
+# Use npm install since no lock file is committed yet.
+# Switch to `npm ci` once package-lock.json exists.
 RUN npm install
 
-# Copy the rest of the application source code
+# --- Stage 2: Builder ---
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# Production optimized build
+# Produces .next/standalone with only prod dependencies (~50MB vs ~300MB)
 RUN npm run build
 
-# Node 20 Alpine base for runner stage
+# --- Stage 3: Runner (minimal) ---
 FROM node:20-alpine AS runner
-
-# Set working directory
 WORKDIR /app
-
-# Set environment variable to production
 ENV NODE_ENV=production
 
-# Create a non-root user with UID 1000
-RUN deluser --remove-home node && \
-    addgroup -g 1000 runlygroup && \
-    adduser -D -u 1000 -G runlygroup runlyuser
+# Non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-# Copy necessary files from the builder stage
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
+# Copy standalone server (includes minimal node_modules)
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+# Copy static assets (not included in standalone by default)
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Change ownership to the non-root user
-RUN chown -R runlyuser:runlygroup /app
-
-# Switch to non-root user
-USER runlyuser
-
-# Expose port 3000
+USER nextjs
 EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-# Command to run Next.js application in production mode
-CMD ["npm", "start"]
+# standalone output creates server.js at root
+CMD ["node", "server.js"]

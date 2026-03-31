@@ -1,8 +1,20 @@
 FROM golang:1.22-alpine
 LABEL language="go" version="1.22"
-ENV LANG=C.UTF-8 CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GONOSUMCHECK=* GONOSUMDB=* GOFLAGS=-mod=mod
-ENV HOME=/home/runner GOPATH=/home/runner/go GOCACHE=/home/runner/.cache/go-build
-RUN OLD_USER=$(awk -F: '$3 == 1000 {print $1}' /etc/passwd); if [ -n "$OLD_USER" ]; then deluser "$OLD_USER"; fi; adduser -D -u 1000 -h /home/runner runner && mkdir -p /home/runner/.cache/go-build /home/runner/go && chown -R runner:runner /home/runner
+# GOMAXPROCS=2: Safe for local 4-core laptops and high-core 94-core hosts.
+# RAM Disk (tmpfs): Point GOCACHE and GOTMPDIR to the fast /tmp mount.
+# Offline-First: Strip GOFLAGS and disable GOPROXY/GOSUMDB to kill 30s hangs.
+ENV LANG=C.UTF-8 CGO_ENABLED=0 GOTOOLCHAIN=local \
+    GOPROXY=off GOSUMDB=off GODEBUG=netdns=go \
+    GOMAXPROCS=2 GOCACHE=/tmp/go-cache GOTMPDIR=/tmp/go-build
+
+RUN adduser -D -u 1000 runner && \
+    mkdir -p /home/runner/go /code && \
+    chown -R runner:runner /home/runner /code
+
+COPY run.sh /run.sh
+RUN chmod +x /run.sh && chown runner:runner /run.sh
+
 WORKDIR /code
 USER runner
-ENTRYPOINT ["sh", "-c", "mkdir -p /tmp/go-build && cp $1 /tmp/go-build/main.go && printf 'module sandbox\\ngo 1.22\\n' > /tmp/go-build/go.mod && cd /tmp/go-build && go build -o /tmp/main . && /tmp/main", "--"]
+# Simplified entrypoint: delegate to run.sh for robustness
+ENTRYPOINT ["/run.sh", "--"]
