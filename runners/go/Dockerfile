@@ -17,4 +17,4 @@ RUN chmod +x /run.sh && chown runner:runner /run.sh
 WORKDIR /code
 USER runner
 # Simplified entrypoint: delegate to run.sh for robustness
-ENTRYPOINT ["/run.sh", "--"]
+ENTRYPOINT ["/run.sh"]
