@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useLanguages } from '../hooks/useLanguages';
 import { LanguageId, LanguageConfig } from '../types';
-import { LANG_EMOJI } from '../lib/languages';
+import LanguageIcon from '../components/Editor/LanguageIcon';
 import EditorToolbar from '../components/Editor/EditorToolbar';
 import CodeEditor from '../components/Editor/CodeEditor';
 import LivePreview from '../components/Preview/LivePreview';
@@ -232,7 +232,7 @@ export default function Home() {
                 style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
                 <div className="flex items-center gap-1.5 px-3 h-full text-[12px] relative"
                   style={{ color: 'var(--text-primary)', background: 'var(--bg-base)', borderTop: '2px solid var(--blue-500)', borderRadius: '0' }}>
-                  <span className="text-[13px]">{LANG_EMOJI[currentLangId] || '📄'}</span>
+                  <LanguageIcon langId={currentLangId} size={14} />
                   <span className="font-medium">{activeFileName}</span>
                 </div>
               </div>
