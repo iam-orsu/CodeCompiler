@@ -12,7 +12,8 @@ import LivePreview from '../components/Preview/LivePreview';
 import { RunlyWebSocket, WsStatus } from '../lib/ws';
 import { XTerminalRef } from '../components/Terminal/XTerminal';
 import FileExplorer, { FileNode } from '../components/Explorer/FileExplorer';
-import { Github } from 'lucide-react';
+import HelpChat from '../components/Chat/HelpChat';
+import { Github, MessageCircleQuestion } from 'lucide-react';
 
 const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), {
   ssr: false,
@@ -34,6 +35,8 @@ export default function Home() {
   const [files, setFiles] = useState<FileNode[]>([]);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [highlightedLines, setHighlightedLines] = useState<number[]>([]);
   const wsClientRef = useRef<RunlyWebSocket | null>(null);
   const terminalRef = useRef<XTerminalRef>(null);
 
@@ -197,7 +200,21 @@ export default function Home() {
             Online Code Editor
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
+          <button
+            id="get-help-btn"
+            onClick={() => setIsChatOpen(prev => !prev)}
+            className="btn"
+            style={{
+              background: isChatOpen ? 'var(--blue-glow-md)' : 'var(--bg-overlay)',
+              border: isChatOpen ? '1px solid rgba(59,130,246,0.3)' : '1px solid var(--border-primary)',
+              color: isChatOpen ? 'var(--blue-400)' : 'var(--text-muted)',
+              fontSize: '12px',
+            }}
+          >
+            <MessageCircleQuestion size={14} />
+            <span className="hidden sm:inline">Get Help</span>
+          </button>
           <a href="https://github.com/iam-orsu/CodeCompiler" target="_blank" rel="noopener noreferrer"
             className="btn btn-ghost" style={{ fontSize: '12px' }}>
             <Github size={14} />
@@ -239,11 +256,35 @@ export default function Home() {
             )}
             {/* Editor */}
             <div className="flex-1 overflow-hidden">
-              <CodeEditor
-                language={getEditorLanguage() as LanguageId}
-                value={code} onChange={handleEditorChange} readOnly={isRunning}
-                onCursorChange={setCursorPos}
-              />
+              {isChatOpen ? (
+                <PanelGroup direction="horizontal" autoSaveId="runly-editor-chat">
+                  <Panel defaultSize={50} minSize={30} className="flex flex-col">
+                    <CodeEditor
+                      language={getEditorLanguage() as LanguageId}
+                      value={code} onChange={handleEditorChange} readOnly={isRunning}
+                      onCursorChange={setCursorPos}
+                      highlightedLines={highlightedLines}
+                    />
+                  </Panel>
+                  <PanelResizeHandle className="resize-handle" />
+                  <Panel defaultSize={50} minSize={30} className="flex flex-col border-l border-[var(--border-primary)]" style={{ background: 'var(--bg-surface)' }}>
+                    <HelpChat
+                      isOpen={isChatOpen}
+                      onClose={() => setIsChatOpen(false)}
+                      language={currentLangConfig.name}
+                      code={code}
+                      onHighlight={setHighlightedLines}
+                    />
+                  </Panel>
+                </PanelGroup>
+              ) : (
+                <CodeEditor
+                  language={getEditorLanguage() as LanguageId}
+                  value={code} onChange={handleEditorChange} readOnly={isRunning}
+                  onCursorChange={setCursorPos}
+                  highlightedLines={highlightedLines}
+                />
+              )}
             </div>
           </Panel>
 

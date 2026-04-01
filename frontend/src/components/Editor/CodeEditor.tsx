@@ -10,10 +10,32 @@ interface CodeEditorProps {
   onChange: (value: string) => void;
   readOnly?: boolean;
   onCursorChange?: (pos: { line: number; col: number }) => void;
+  highlightedLines?: number[];
 }
 
-export default function CodeEditor({ language, value, onChange, readOnly = false, onCursorChange }: CodeEditorProps) {
+export default function CodeEditor({ language, value, onChange, readOnly = false, onCursorChange, highlightedLines }: CodeEditorProps) {
   const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const decorationsRef = useRef<string[]>([]);
+
+  React.useEffect(() => {
+    if (!editorRef.current || !monacoRef.current) return;
+    
+    if (highlightedLines && highlightedLines.length > 0) {
+      const decorations = highlightedLines.map((line: number) => ({
+        range: new monacoRef.current.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: true,
+          className: 'problem-line',
+          glyphMarginClassName: 'problem-marker',
+          glyphMarginHoverMessage: { value: 'Code issue identified here' }
+        }
+      }));
+      decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, decorations);
+    } else {
+      decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, []);
+    }
+  }, [highlightedLines]);
 
   const handleEditorWillMount = (monaco: any) => {
     monaco.editor.defineTheme('runly', {
@@ -57,8 +79,9 @@ export default function CodeEditor({ language, value, onChange, readOnly = false
     });
   };
 
-  const handleMount = (editor: any) => {
+  const handleMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
     editor.onDidChangeCursorPosition((e: any) => {
       if (onCursorChange) {
         onCursorChange({ line: e.position.lineNumber, col: e.position.column });
@@ -86,6 +109,7 @@ export default function CodeEditor({ language, value, onChange, readOnly = false
         options={{
           minimap: { enabled: false },
           lineNumbers: 'on',
+          glyphMargin: true,
           automaticLayout: true,
           readOnly,
           fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
