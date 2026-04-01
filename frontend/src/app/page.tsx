@@ -201,20 +201,6 @@ export default function Home() {
           </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <button
-            id="get-help-btn"
-            onClick={() => setIsChatOpen(prev => !prev)}
-            className="btn"
-            style={{
-              background: isChatOpen ? 'var(--blue-glow-md)' : 'var(--bg-overlay)',
-              border: isChatOpen ? '1px solid rgba(59,130,246,0.3)' : '1px solid var(--border-primary)',
-              color: isChatOpen ? 'var(--blue-400)' : 'var(--text-muted)',
-              fontSize: '12px',
-            }}
-          >
-            <MessageCircleQuestion size={14} />
-            <span className="hidden sm:inline">Get Help</span>
-          </button>
           <a href="https://github.com/iam-orsu/CodeCompiler" target="_blank" rel="noopener noreferrer"
             className="btn btn-ghost" style={{ fontSize: '12px' }}>
             <Github size={14} />
@@ -242,6 +228,7 @@ export default function Home() {
               onRun={handleRun} onStop={handleStop} isRunning={isRunning}
               isWebMode={currentLangConfig.isWebMode} isSpecial={currentLangConfig.isSpecial}
               selectedLibraries={selectedLibraries} onLibraryChange={setSelectedLibraries}
+              isChatOpen={isChatOpen} onChatToggle={() => setIsChatOpen(prev => !prev)}
             />
             {/* Tab bar */}
             {activeFileName && (

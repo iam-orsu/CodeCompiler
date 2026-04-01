@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, ChevronDown, Zap, Package, Search } from 'lucide-react';
+import { Play, Square, ChevronDown, Zap, Package, Search, MessageCircleQuestion } from 'lucide-react';
 import { useLanguages } from '../../hooks/useLanguages';
 import { LanguageId, LanguageConfig } from '../../types';
 import { LIBRARIES } from '../../lib/marketplace';
@@ -17,6 +17,8 @@ interface EditorToolbarProps {
   isSpecial: boolean;
   selectedLibraries: string[];
   onLibraryChange: (libs: string[]) => void;
+  isChatOpen: boolean;
+  onChatToggle: () => void;
 }
 
 const LIB_ICON: Record<string, string> = {
@@ -26,6 +28,7 @@ const LIB_ICON: Record<string, string> = {
 export default function EditorToolbar({
   language, onLanguageChange, onRun, onStop, isRunning,
   isWebMode, isSpecial, selectedLibraries, onLibraryChange,
+  isChatOpen, onChatToggle,
 }: EditorToolbarProps) {
   const { languages } = useLanguages();
   const [open, setOpen] = useState(false);
@@ -307,6 +310,20 @@ export default function EditorToolbar({
               Stop
             </button>
           )}
+
+          <button
+            onClick={onChatToggle}
+            className="btn"
+            style={{
+              background: isChatOpen ? 'var(--blue-glow-md)' : 'var(--bg-overlay)',
+              border: isChatOpen ? '1px solid rgba(59,130,246,0.3)' : '1px solid var(--border-primary)',
+              color: isChatOpen ? 'var(--blue-400)' : 'var(--text-muted)',
+              fontSize: '12px',
+            }}
+          >
+            <MessageCircleQuestion size={14} />
+            <span className="hidden sm:inline">AI Assist</span>
+          </button>
         </div>
       </div>
 

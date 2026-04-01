@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Send, Bot, User, AlertTriangle, Zap } from 'lucide-react';
+import { X, Send, Bot, User, AlertTriangle, Zap, Sparkles, Code2, HelpCircle, Lightbulb } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -18,6 +18,43 @@ interface HelpChatProps {
   language: string;
   code: string;
   onHighlight?: (lines: number[]) => void;
+}
+
+const SUGGESTIONS = [
+  { icon: HelpCircle, label: 'What is wrong with my code?', color: 'blue' },
+  { icon: Lightbulb, label: 'How can I optimize this?', color: 'amber' },
+  { icon: Code2, label: 'Explain this logic to me', color: 'green' },
+];
+
+/** Simple markdown-ish rendering: bold, line references */
+function renderAIText(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  // Split by **bold** markers and `code` markers
+  const regex = /(\*\*[^*]+\*\*|`[^`]+`|Lines?\s+\d+(?:\s*[-]\s*\d+)?:?)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Push text before match
+    if (match.index > lastIndex) {
+      parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
+    }
+    const m = match[0];
+    if (m.startsWith('**') && m.endsWith('**')) {
+      parts.push(<strong key={key++} className="chat-text-bold">{m.slice(2, -2)}</strong>);
+    } else if (m.startsWith('`') && m.endsWith('`')) {
+      parts.push(<code key={key++} className="chat-inline-code">{m.slice(1, -1)}</code>);
+    } else {
+      // Line reference
+      parts.push(<span key={key++} className="chat-line-ref">{m}</span>);
+    }
+    lastIndex = match.index + m.length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
+  }
+  return parts;
 }
 
 export default function HelpChat({ isOpen, onClose, language, code, onHighlight }: HelpChatProps) {
@@ -42,6 +79,14 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
     }
   }, [isOpen]);
 
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }, [input]);
+
   const formatTime = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -52,15 +97,18 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
     const split = c.split('\n');
     const min = Math.min(...lines);
     const max = Math.max(...lines);
-    return split.slice(Math.max(0, min - 1), max).join('\n');
+    return split.slice(Math.max(0, min - 1), max).map((line, i) => ({
+      num: min + i,
+      text: line,
+    }));
   };
 
-  const sendMessage = useCallback(async () => {
-    const trimmed = input.trim();
+  const sendMessage = useCallback(async (overrideMsg?: string) => {
+    const trimmed = (overrideMsg || input).trim();
     if (!trimmed || isLoading) return;
 
     setError(null);
-    onHighlight?.([]); // Clear highlights when user sends a new message
+    onHighlight?.([]);
 
     const userMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -70,7 +118,7 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
       codeSnapshot: code,
     };
     setMessages(prev => [...prev, userMsg]);
-    setInput('');
+    if (!overrideMsg) setInput('');
     setIsLoading(true);
 
     try {
@@ -140,139 +188,178 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
 
   if (!isOpen) return null;
 
+  const showEmptyState = messages.length === 0 && !isLoading;
+
   return (
-    <div className="chat-panel">
-      {/* Header */}
-      <div className="chat-header">
-          <div className="flex items-center gap-2.5">
-            <div className="chat-avatar-ai">
-              <Bot size={14} />
-            </div>
-            <div>
-              <h3 className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-                AI Tutor
-              </h3>
-              <span className="text-[10px]" style={{ color: 'var(--text-ghost)' }}>
-                Socratic Hints Only
-              </span>
+    <div className="hc-panel">
+      {/* === HEADER === */}
+      <div className="hc-header">
+        <div className="hc-header-inner">
+          <div className="hc-header-left">
+            <div className="hc-logo">
+              <div className="hc-logo-icon">
+                <Sparkles size={14} />
+              </div>
+              <div className="hc-logo-text">
+                <span className="hc-title">AI Tutor</span>
+                <span className="hc-subtitle">Hints only, no code</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="hc-header-right">
             {remaining !== null && (
-              <span className="chat-remaining">
+              <div className="hc-credits">
                 <Zap size={10} />
-                {remaining} left
-              </span>
+                <span>{remaining}</span>
+              </div>
             )}
-            <button onClick={onClose} className="chat-close-btn">
+            <button onClick={onClose} className="hc-close-btn" aria-label="Close chat">
               <X size={14} />
             </button>
           </div>
         </div>
+        {/* Gradient accent line */}
+        <div className="hc-header-accent" />
+      </div>
 
-        {/* Warning Banner */}
-        <div className="chat-warning">
-          <AlertTriangle size={12} style={{ flexShrink: 0 }} />
-          <span>This AI won't write code for you - figure it out yourself!</span>
-        </div>
+      {/* === WARNING BANNER === */}
+      <div className="hc-banner">
+        <AlertTriangle size={11} />
+        <span>This AI won't write code for you. Think through it!</span>
+      </div>
 
-        {/* Messages */}
-        <div className="chat-messages">
-          {messages.length === 0 && !isLoading && (
-            <div className="chat-empty">
-              <div className="chat-empty-icon">
-                <Bot size={24} />
-              </div>
-              <p className="text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>
-                Ask me anything about your code
-              </p>
-              <p className="text-[11px]" style={{ color: 'var(--text-ghost)', maxWidth: 240, textAlign: 'center' }}>
-                I'll guide you with hints and questions. No code, no shortcuts - just learning.
-              </p>
+      {/* === MESSAGE AREA === */}
+      <div className="hc-messages">
+        {showEmptyState && (
+          <div className="hc-empty">
+            <div className="hc-empty-glow" />
+            <div className="hc-empty-avatar">
+              <Bot size={28} />
             </div>
-          )}
-
-          {messages.map(msg => (
-            <div key={msg.id} className={`chat-bubble-wrap ${msg.role === 'user' ? 'chat-bubble-wrap-user' : 'chat-bubble-wrap-ai'}`}>
-              {msg.role === 'ai' && (
-                <div className="chat-avatar-ai chat-avatar-sm">
-                  <Bot size={11} />
-                </div>
-              )}
-              <div className={msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}>
-                {msg.highlighted_lines && msg.highlighted_lines.length > 0 && msg.codeSnapshot && (
-                  <div className="chat-snippet">
-                    <span className="chat-snippet-header">
-                      User's code (Line {msg.highlighted_lines.length === 1 ? msg.highlighted_lines[0] : `${Math.min(...msg.highlighted_lines)}-${Math.max(...msg.highlighted_lines)}`}):
-                    </span>
-                    <code>{getCodeSnippet(msg.codeSnapshot, msg.highlighted_lines)}</code>
-                  </div>
-                )}
-                <p className="chat-bubble-text" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                  {msg.content}
-                </p>
-                <span className="chat-time">{formatTime(msg.timestamp)}</span>
-              </div>
-              {msg.role === 'user' && (
-                <div className="chat-avatar-user chat-avatar-sm">
-                  <User size={11} />
-                </div>
-              )}
+            <h4 className="hc-empty-title">How can I help?</h4>
+            <p className="hc-empty-desc">
+              Ask about bugs, logic, or optimization.<br/>I'll guide you with questions and hints.
+            </p>
+            <div className="hc-suggestions">
+              {SUGGESTIONS.map((s, i) => (
+                <button
+                  key={i}
+                  className={`hc-suggestion hc-suggestion-${s.color}`}
+                  onClick={() => sendMessage(s.label)}
+                  style={{ animationDelay: `${i * 80}ms` }}
+                >
+                  <s.icon size={13} />
+                  <span>{s.label}</span>
+                </button>
+              ))}
             </div>
-          ))}
-
-          {/* Typing indicator */}
-          {isLoading && (
-            <div className="chat-bubble-wrap chat-bubble-wrap-ai">
-              <div className="chat-avatar-ai chat-avatar-sm">
-                <Bot size={11} />
-              </div>
-              <div className="chat-bubble-ai">
-                <div className="chat-typing-indicator">
-                  <span className="chat-typing-dot" />
-                  <span className="chat-typing-dot" />
-                  <span className="chat-typing-dot" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="chat-error">
-              <AlertTriangle size={12} />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input */}
-        <div className="chat-input-area">
-          <div className="chat-input-wrap">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={remaining === 0 ? 'Daily limit reached...' : 'Ask about your code...'}
-              disabled={isLoading || remaining === 0}
-              className="chat-input"
-              rows={1}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || isLoading || remaining === 0}
-              className="chat-send-btn"
-            >
-              <Send size={14} />
-            </button>
           </div>
-          <span className="text-[9px] mt-1 block" style={{ color: 'var(--text-ghost)', textAlign: 'center' }}>
-            Shift+Enter for new line / Esc to close
-          </span>
+        )}
+
+        {messages.map((msg, idx) => (
+          <div
+            key={msg.id}
+            className={`hc-msg ${msg.role === 'user' ? 'hc-msg-user' : 'hc-msg-ai'}`}
+            style={{ animationDelay: `${Math.min(idx * 30, 150)}ms` }}
+          >
+            {msg.role === 'ai' && (
+              <div className="hc-msg-avatar hc-msg-avatar-ai">
+                <Sparkles size={12} />
+              </div>
+            )}
+            <div className={msg.role === 'user' ? 'hc-bubble-user' : 'hc-bubble-ai'}>
+              {/* Code snippet reference */}
+              {msg.role === 'ai' && msg.highlighted_lines && msg.highlighted_lines.length > 0 && msg.codeSnapshot && (
+                <div className="hc-code-ref">
+                  <div className="hc-code-ref-header">
+                    <Code2 size={11} />
+                    <span>
+                      {msg.highlighted_lines.length === 1
+                        ? `Line ${msg.highlighted_lines[0]}`
+                        : `Lines ${Math.min(...msg.highlighted_lines)}-${Math.max(...msg.highlighted_lines)}`}
+                    </span>
+                  </div>
+                  <div className="hc-code-ref-body">
+                    {getCodeSnippet(msg.codeSnapshot, msg.highlighted_lines)?.map((l) => (
+                      <div key={l.num} className="hc-code-line">
+                        <span className="hc-code-line-num">{l.num}</span>
+                        <span className="hc-code-line-text">{l.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="hc-bubble-text">
+                {msg.role === 'ai' ? renderAIText(msg.content) : msg.content}
+              </p>
+              <span className="hc-msg-time">{formatTime(msg.timestamp)}</span>
+            </div>
+            {msg.role === 'user' && (
+              <div className="hc-msg-avatar hc-msg-avatar-user">
+                <User size={12} />
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Typing indicator */}
+        {isLoading && (
+          <div className="hc-msg hc-msg-ai hc-typing-wrap">
+            <div className="hc-msg-avatar hc-msg-avatar-ai">
+              <Sparkles size={12} />
+            </div>
+            <div className="hc-bubble-ai hc-typing-bubble">
+              <div className="hc-typing">
+                <span className="hc-typing-dot" />
+                <span className="hc-typing-dot" />
+                <span className="hc-typing-dot" />
+              </div>
+              <span className="hc-typing-label">Thinking...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="hc-error">
+            <AlertTriangle size={12} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* === INPUT AREA === */}
+      <div className="hc-input-area">
+        <div className="hc-input-container">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={remaining === 0 ? 'Daily limit reached...' : `Ask about your ${language} code...`}
+            disabled={isLoading || remaining === 0}
+            className="hc-textarea"
+            rows={1}
+          />
+          <button
+            onClick={() => sendMessage()}
+            disabled={!input.trim() || isLoading || remaining === 0}
+            className="hc-send-btn"
+            aria-label="Send message"
+          >
+            <Send size={14} />
+          </button>
         </div>
+        <div className="hc-input-hints">
+          <span><kbd>Enter</kbd> send</span>
+          <span className="hc-input-sep" />
+          <span><kbd>Shift+Enter</kbd> new line</span>
+          <span className="hc-input-sep" />
+          <span><kbd>Esc</kbd> close</span>
+        </div>
+      </div>
     </div>
   );
 }
