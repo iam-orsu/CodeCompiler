@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, ChevronDown, Zap, Package, Search, MessageCircleQuestion } from 'lucide-react';
+import { Play, Square, ChevronDown, Zap, Package, Search, Sparkles } from 'lucide-react';
 import { useLanguages } from '../../hooks/useLanguages';
 import { LanguageId, LanguageConfig } from '../../types';
 import { LIBRARIES } from '../../lib/marketplace';
@@ -321,7 +321,7 @@ export default function EditorToolbar({
               fontSize: '12px',
             }}
           >
-            <MessageCircleQuestion size={14} />
+            <Sparkles size={14} />
             <span className="hidden sm:inline">AI Assist</span>
           </button>
         </div>

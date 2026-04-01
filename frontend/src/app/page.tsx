@@ -13,7 +13,7 @@ import { RunlyWebSocket, WsStatus } from '../lib/ws';
 import { XTerminalRef } from '../components/Terminal/XTerminal';
 import FileExplorer, { FileNode } from '../components/Explorer/FileExplorer';
 import HelpChat from '../components/Chat/HelpChat';
-import { Github, MessageCircleQuestion } from 'lucide-react';
+import { Github } from 'lucide-react';
 
 const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), {
   ssr: false,
