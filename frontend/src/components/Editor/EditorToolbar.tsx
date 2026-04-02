@@ -334,10 +334,9 @@ export default function EditorToolbar({
 
           <button
             onClick={onChatToggle}
-            className="btn"
+            className={`btn ${isChatOpen ? 'btn-ai-glow-active' : 'btn-ai-glow'}`}
             style={{
               background: isChatOpen ? 'var(--blue-glow-md)' : 'var(--bg-overlay)',
-              border: isChatOpen ? '1px solid rgba(59,130,246,0.3)' : '1px solid var(--border-primary)',
               color: isChatOpen ? 'var(--blue-400)' : 'var(--text-muted)',
               fontSize: '12px',
             }}

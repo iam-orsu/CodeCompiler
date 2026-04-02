@@ -229,7 +229,7 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
       {/* === WARNING BANNER === */}
       <div className="hc-banner">
         <AlertTriangle size={11} />
-        <span>This AI won't write code for you. Think through it!</span>
+        <span>This AI won’t write code for you. It helps you think, debug, and optimize your code.</span>
       </div>
 
       {/* === MESSAGE AREA === */}
@@ -242,7 +242,7 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
             </div>
             <h4 className="hc-empty-title">How can I help?</h4>
             <p className="hc-empty-desc">
-              Ask about bugs, logic, or optimization.<br/>I'll guide you with questions and hints.
+              Ask about bugs, logic, or optimization.<br />I'll guide you with questions and hints.
             </p>
             <div className="hc-suggestions">
               {SUGGESTIONS.map((s, i) => (
