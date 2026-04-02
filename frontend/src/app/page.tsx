@@ -273,7 +273,7 @@ export default function Home() {
 
       {/* === WORKSPACE === */}
       <div className="flex-1 flex overflow-hidden">
-        <PanelGroup direction={isMobile ? 'vertical' : 'horizontal'} autoSaveId={isMobile ? 'runly-v4-m' : 'runly-v4'}>
+        <PanelGroup key={isMobile ? 'm' : 'd'} direction={isMobile ? 'vertical' : 'horizontal'}>
 
           {/* File Explorer - hidden on mobile */}
           {!isMobile && (
@@ -322,7 +322,7 @@ export default function Home() {
             {/* Editor */}
             <div className="flex-1 overflow-hidden">
               {isChatOpen ? (
-                <PanelGroup direction="horizontal" autoSaveId="runly-editor-chat-v2">
+                <PanelGroup direction="horizontal">
                   <Panel defaultSize={50} minSize={30} className="flex flex-col">
                     <CodeEditor
                       language={getEditorLanguage() as LanguageId}
