@@ -81,11 +81,27 @@ def rewrite_queries(session_id: str, code: str, lang: str) -> str:
     prefix = f"temp_{session_id.replace('-', '')}_"
     
     if lang == "sqlite":
+        # SQL keywords that should NEVER be treated as table names
+        _SQL_RESERVED = {
+            "create", "select", "insert", "update", "delete", "drop", "alter",
+            "from", "where", "set", "values", "into", "table", "join", "on",
+            "and", "or", "not", "null", "if", "exists", "primary", "key",
+            "foreign", "index", "unique", "begin", "end", "commit", "rollback",
+            "integer", "int", "text", "real", "blob", "varchar", "boolean",
+            "autoincrement", "references", "check", "default", "having",
+            "group", "order", "by", "limit", "offset", "union", "all",
+            "distinct", "as", "like", "between", "in", "is", "case", "when",
+            "then", "else", "asc", "desc", "count", "sum", "avg", "min", "max",
+        }
+
         def sql_repl(match):
             keyword = match.group(1)
             middle = match.group(2) or ""
             identifier = match.group(3)
             if identifier.lower() in ["movies", "actors"]:
+                return match.group(0)
+            # Guard: don't prefix SQL keywords accidentally matched from comments
+            if identifier.lower() in _SQL_RESERVED:
                 return match.group(0)
             return f"{keyword}{middle}{prefix}{identifier}"
             
@@ -144,6 +160,105 @@ def rewrite_queries(session_id: str, code: str, lang: str) -> str:
         
     return code
 
+def check_unsafe_queries(code: str, lang: str) -> tuple[bool, str]:
+    if lang == "sqlite":
+        if re.search(r"(?i)\b(UPDATE|DELETE\s+FROM)\s+(movies|actors)\b", code):
+            return False, "Cannot modify pre-seeded tables (movies, actors). Create your own tables instead."
+            
+        stmts = re.split(r";", code)
+        for stmt in stmts:
+            stmt = stmt.strip()
+            if not stmt: continue
+            is_update = re.search(r"(?i)\bUPDATE\s+", stmt) is not None
+            is_delete = re.search(r"(?i)\bDELETE\s+FROM\s+", stmt) is not None
+            
+            if (is_update or is_delete) and not re.search(r"(?i)\bWHERE\s+", stmt):
+                return False, "WHERE clause required for UPDATE and DELETE operations for safety."
+    elif lang == "mongodb":
+        if re.search(r"db\.(movies|actors)\.(update|delete)", code):
+            return False, "Cannot modify pre-seeded tables (movies, actors). Create your own tables instead."
+            
+        if re.search(r"db\.[a-zA-Z0-9_]+\.deleteMany\(\s*(\{\s*\}|)\s*\)", code):
+            return False, "Filter required for deleteMany for safety."
+    return True, ""
+
+def build_dry_run_code(code: str, lang: str) -> tuple[str, bool]:
+    has_op = False
+    if lang == "sqlite":
+        def sql_repl(m):
+            nonlocal has_op
+            has_op = True
+            op = m.group(1).upper()
+            table = m.group(2)
+            rest = m.group(3)
+            # Find WHERE
+            where_match = re.search(r"(?i)WHERE\s+(.+)$", rest)
+            if where_match:
+                where_clause = where_match.group(1)
+                prefix = "DRYRUN_UPDATE" if op == "UPDATE" else "DRYRUN_DELETE"
+                return f"SELECT '{prefix}=' || (SELECT COUNT(*) FROM {table} WHERE {where_clause});\n{m.group(0)}"
+            return m.group(0)
+            
+        code = re.sub(r"(?i)\b(UPDATE)\s+([a-zA-Z0-9_]+)\s+(SET\s+.*?WHERE\s+.+?)(?:;|$)", sql_repl, code)
+        code = re.sub(r"(?i)\b(DELETE\s+FROM)\s+([a-zA-Z0-9_]+)\s+(WHERE\s+.+?)(?:;|$)", sql_repl, code)
+        
+    elif lang == "mongodb":
+        idx = 0
+        while True:
+            ops = {
+                "updateOne": code.find(".updateOne(", idx),
+                "updateMany": code.find(".updateMany(", idx),
+                "deleteOne": code.find(".deleteOne(", idx),
+                "deleteMany": code.find(".deleteMany(", idx),
+            }
+            valid_ops = {k: v for k, v in ops.items() if v != -1}
+            if not valid_ops:
+                break
+                
+            op_name = min(valid_ops, key=valid_ops.get)
+            curr = valid_ops[op_name]
+            op_len = len(op_name) + 2 # .method(
+            
+            open_p, open_b, filter_end = 1, 0, -1
+            for i in range(curr + op_len, len(code)):
+                c = code[i]
+                if c == '{': open_b += 1
+                elif c == '}': open_b -= 1
+                elif c == '(': open_p += 1
+                elif c == ')':
+                    open_p -= 1
+                    if open_p == 0 and open_b == 0:
+                        filter_end = i
+                        break
+                elif c == ',' and open_b == 0 and open_p == 1:
+                    filter_end = i
+                    break
+                    
+            if filter_end != -1:
+                filter_str = code[curr + op_len : filter_end].strip()
+                if not filter_str: filter_str = "{}"
+                if op_name in ["updateOne", "deleteOne"]:
+                    metric = "UPDATE" if "update" in op_name else "DELETE"
+                    ins = f"print('DRYRUN_{metric}=1');\n"
+                    code = code[:curr] + ins + code[curr:]
+                    idx = curr + len(ins) + len(op_name) + 4
+                    has_op = True
+                else:
+                    metric = "UPDATE" if "update" in op_name else "DELETE"
+                    col_start = code.rfind("db.", 0, curr)
+                    if col_start != -1:
+                        col_name = code[col_start+3:curr]
+                        ins = f"print('DRYRUN_{metric}=' + db.{col_name}.countDocuments({filter_str}));\n"
+                        code = code[:col_start] + ins + code[col_start:]
+                        has_op = True
+                        idx = col_start + len(ins) + len(op_name) + 4
+                    else:
+                        idx = curr + op_len
+            else:
+                idx = curr + op_len
+                
+    return code, has_op
+
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +288,40 @@ async def cleanup_container(container):
     except Exception as e:
         logger.debug(f"Container cleanup error (non-critical): {e}")
 
+async def run_headless_query(lang: str, dry_code: str) -> tuple[int, int]:
+    try:
+        from .pool import get_container
+        container = await get_container(lang)
+    except Exception as e:
+        logger.error(f"Failed to get container for dry run: {e}")
+        return 0, 0
+        
+    loop = asyncio.get_running_loop()
+    filename = LANGUAGES[lang]
+    tar_data = create_tar(filename, dry_code)
+    try:
+        await loop.run_in_executor(None, lambda: container.put_archive("/code", tar_data))
+        await loop.run_in_executor(None, container.start)
+        await loop.run_in_executor(None, container.wait)
+        out = await loop.run_in_executor(None, lambda: container.logs(stdout=True, stderr=True))
+        out_str = out.decode('utf-8', errors='replace')
+        
+        updates, deletes = 0, 0
+        for line in out_str.split('\n'):
+            if "DRYRUN_UPDATE=" in line:
+                try: updates += int(re.search(r"DRYRUN_UPDATE=(\d+)", line).group(1))
+                except: pass
+            elif "DRYRUN_DELETE=" in line:
+                try: deletes += int(re.search(r"DRYRUN_DELETE=(\d+)", line).group(1))
+                except: pass
+                
+        return updates, deletes
+    except Exception as e:
+        logger.error(f"Dry run execution error: {e}")
+        return 0, 0
+    finally:
+        asyncio.create_task(cleanup_container(container))
+
 async def execute_code(ws: WebSocket, lang: str, code: str, session_id: str = None):
     if lang not in LANGUAGES:
         await ws.send_json({"type": "stderr", "data": f"Unsupported language: {lang}\n"})
@@ -190,16 +339,29 @@ async def execute_code(ws: WebSocket, lang: str, code: str, session_id: str = No
             # Initialize if they just refreshed or first load
             await init_session(session_id)
             
+        safe, err_msg = check_unsafe_queries(code, lang)
+        if not safe:
+            await ws.send_json({"type": "stderr", "data": err_msg + "\n"})
+            await ws.send_json({"type": "exit", "data": 1})
+            return
+            
         new_creates = count_creates(code, lang)
         new_inserts = count_inserts(code, lang)
         
-        success, err_msg = await check_and_commit_limits(session_id, new_creates, new_inserts)
+        rewritten_for_dry = rewrite_queries(session_id, code, lang)
+        dry_code, has_ops = build_dry_run_code(rewritten_for_dry, lang)
+        
+        dynamic_updates, dynamic_deletes = 0, 0
+        if has_ops:
+            dynamic_updates, dynamic_deletes = await run_headless_query(lang, dry_code)
+        
+        success, err_msg = await check_and_commit_limits(session_id, new_creates, new_inserts, dynamic_updates, dynamic_deletes)
         if not success:
             await ws.send_json({"type": "stderr", "data": err_msg + "\n"})
             await ws.send_json({"type": "exit", "data": 1})
             return
             
-        code = rewrite_queries(session_id, code, lang)
+        code = rewritten_for_dry
     # --------------------------------
 
 

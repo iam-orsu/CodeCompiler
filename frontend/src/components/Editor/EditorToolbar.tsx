@@ -176,7 +176,7 @@ export default function EditorToolbar({
 
   return (
     <>
-      <div className="flex items-center justify-between h-[44px] px-3 shrink-0"
+      <div className="flex items-center justify-between flex-wrap gap-y-1 min-h-[44px] px-3 py-1 shrink-0"
            style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
         {/* Language Picker */}
         <div className="flex items-center gap-2">

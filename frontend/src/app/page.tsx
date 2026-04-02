@@ -28,6 +28,17 @@ const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), {
 
 
 
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < breakpoint);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 export default function Home() {
   const { languages, loading } = useLanguages();
   const [currentLangId, setCurrentLangId] = useState<LanguageId>('python');
@@ -39,6 +50,7 @@ export default function Home() {
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [highlightedLines, setHighlightedLines] = useState<number[]>([]);
+  const isMobile = useIsMobile();
   const wsClientRef = useRef<RunlyWebSocket | null>(null);
   const terminalRef = useRef<XTerminalRef>(null);
 
@@ -247,17 +259,21 @@ export default function Home() {
 
       {/* === WORKSPACE === */}
       <div className="flex-1 flex overflow-hidden">
-        <PanelGroup direction="horizontal" autoSaveId="runly-v3">
+        <PanelGroup direction={isMobile ? 'vertical' : 'horizontal'} autoSaveId={isMobile ? 'runly-v3-m' : 'runly-v3'}>
 
-          {/* File Explorer */}
-          <Panel defaultSize={14} minSize={10} className="hidden md:flex flex-col"
-            style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-primary)' }}>
-            <FileExplorer files={files} setFiles={setFiles} activeFileId={activeFileId} onFileSelect={handleFileSelect} />
-          </Panel>
-          <PanelResizeHandle className="resize-handle hidden md:block" />
+          {/* File Explorer - hidden on mobile */}
+          {!isMobile && (
+            <>
+              <Panel defaultSize={14} minSize={10} className="flex flex-col"
+                style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-primary)' }}>
+                <FileExplorer files={files} setFiles={setFiles} activeFileId={activeFileId} onFileSelect={handleFileSelect} />
+              </Panel>
+              <PanelResizeHandle className="resize-handle" />
+            </>
+          )}
 
           {/* Editor Panel */}
-          <Panel defaultSize={52} minSize={30} className="flex flex-col" style={{ background: 'var(--bg-base)' }}>
+          <Panel defaultSize={isMobile ? 55 : 52} minSize={isMobile ? 25 : 30} className="flex flex-col" style={{ background: 'var(--bg-base)' }}>
             {/* Toolbar */}
             <EditorToolbar
               language={currentLangId} onLanguageChange={handleLanguageChange}
@@ -323,14 +339,14 @@ export default function Home() {
             </div>
           </Panel>
 
-          <PanelResizeHandle className="resize-handle" />
+          <PanelResizeHandle className={isMobile ? 'resize-handle-vertical' : 'resize-handle'} />
 
           {/* Console/Preview Panel */}
-          <Panel defaultSize={34} minSize={20} className="flex flex-col"
-            style={{ background: 'var(--bg-base)', borderLeft: '1px solid var(--border-primary)' }}>
+          <Panel defaultSize={isMobile ? 45 : 34} minSize={isMobile ? 15 : 20} className="flex flex-col"
+            style={{ background: 'var(--bg-base)', borderLeft: isMobile ? 'none' : '1px solid var(--border-primary)', borderTop: isMobile ? '1px solid var(--border-primary)' : 'none' }}>
             {/* Console Header */}
-            <div className="flex items-center justify-between h-[44px] px-4 shrink-0"
-              style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
+            <div className="flex items-center justify-between px-4 shrink-0"
+              style={{ height: isMobile ? '36px' : '44px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
               <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>
                 <span style={{ color: 'var(--text-ghost)', fontFamily: "'JetBrains Mono', monospace", fontSize: '11px' }}>{'>'}_</span>
                 <span>{currentLangConfig.isWebMode ? 'Preview' : 'Console'}</span>

@@ -88,7 +88,7 @@ export default function SessionTimerDisplay({
   
   const isMongo = language === 'mongodb';
   const labelCreate = isMongo ? 'Collections' : 'Tables';
-  const labelInsert = isMongo ? 'Docs' : 'Rows';
+  const labelInsert = 'Row Ops';
 
   return (
     <div className={`session-timer-display ${isDanger ? 'danger' : ''}`}>

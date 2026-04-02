@@ -38,9 +38,14 @@ async def get_db_limits(session_id: str) -> dict:
             }
     
     ttl = await redis_client.ttl(key)
+    
+    current_inserts = int(data.get("inserts", 0))
+    current_updates = int(data.get("updates", 0))
+    current_deletes = int(data.get("deletes", 0))
+    
     return {
         "creates": int(data.get("creates", 0)),
-        "inserts": int(data.get("inserts", 0)),
+        "inserts": current_inserts + current_updates + current_deletes, # Summed for frontend simplicity
         "extended_count": int(data.get("extended_count", 0)),
         "remaining_time": ttl if ttl > 0 else 0,
         "expired": ttl <= 0
@@ -59,6 +64,8 @@ async def init_session(session_id: str) -> bool:
         await redis_client.hset(key, mapping={
             "creates": 0,
             "inserts": 0,
+            "updates": 0,
+            "deletes": 0,
             "created_at": now,
             "extended_count": 0,
             "last_extended_at": now,
@@ -85,6 +92,8 @@ async def extend_session(session_id: str) -> tuple[bool, str, int]:
     await redis_client.hset(key, mapping={
         "creates": 0,
         "inserts": 0,
+        "updates": 0,
+        "deletes": 0,
         "extended_count": extended_count + 1,
         "last_extended_at": now,
         "tracked_tables": "[]",
@@ -98,8 +107,8 @@ async def extend_session(session_id: str) -> tuple[bool, str, int]:
 
 import json
 
-async def check_and_commit_limits(session_id: str, new_tables: set, new_inserts: dict) -> tuple[bool, str]:
-    if not new_tables and not new_inserts:
+async def check_and_commit_limits(session_id: str, new_tables: set, new_inserts: dict, dynamic_updates: int = 0, dynamic_deletes: int = 0) -> tuple[bool, str]:
+    if not new_tables and not new_inserts and dynamic_updates == 0 and dynamic_deletes == 0:
         return True, ""
         
     key = f"temp_session:{session_id}"
@@ -110,6 +119,9 @@ async def check_and_commit_limits(session_id: str, new_tables: set, new_inserts:
         
     current_creates = int(data.get("creates", 0))
     current_inserts = int(data.get("inserts", 0))
+    current_updates = int(data.get("updates", 0))
+    current_deletes = int(data.get("deletes", 0))
+    current_row_ops = current_inserts + current_updates + current_deletes
     
     tracked_tables = set(json.loads(data.get("tracked_tables", "[]")))
     tracked_inserts = dict(json.loads(data.get("tracked_inserts", "{}")))
@@ -127,20 +139,25 @@ async def check_and_commit_limits(session_id: str, new_tables: set, new_inserts:
     if current_creates + added_creates > 5:
         return False, "CREATE limit reached (5/5). Extend session or wait 1 hour."
         
-    if current_inserts + added_inserts > 50:
-        return False, "Row limit reached (50/50). Extend session or wait 1 hour."
+    proposed_row_ops = added_inserts + dynamic_updates + dynamic_deletes
+    if current_row_ops + proposed_row_ops > 50:
+        return False, f"Row operations limit reached ({current_row_ops + proposed_row_ops}/50). You only have {max(0, 50 - current_row_ops)} operations remaining."
         
     # Commit
-    updates = {}
+    updates_map = {}
     if added_creates > 0:
         tracked_tables.update(actual_new_tables)
-        updates["tracked_tables"] = json.dumps(list(tracked_tables))
+        updates_map["tracked_tables"] = json.dumps(list(tracked_tables))
         await redis_client.hincrby(key, "creates", added_creates)
     if added_inserts > 0:
-        updates["tracked_inserts"] = json.dumps(tracked_inserts)
+        updates_map["tracked_inserts"] = json.dumps(tracked_inserts)
         await redis_client.hincrby(key, "inserts", added_inserts)
+    if dynamic_updates > 0:
+        await redis_client.hincrby(key, "updates", dynamic_updates)
+    if dynamic_deletes > 0:
+        await redis_client.hincrby(key, "deletes", dynamic_deletes)
         
-    if updates:
-        await redis_client.hset(key, mapping=updates)
+    if updates_map:
+        await redis_client.hset(key, mapping=updates_map)
         
     return True, ""
