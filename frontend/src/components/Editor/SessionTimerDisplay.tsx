@@ -33,7 +33,7 @@ export default function SessionTimerDisplay({
   const fetchStatus = useCallback(async () => {
     if (!sessionId || !isDb) return;
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api';
+      const apiUrl = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) || 'http://localhost/api';
       const res = await fetch(`${apiUrl}/session/status`, {
         headers: { 'X-Session-ID': sessionId }
       });

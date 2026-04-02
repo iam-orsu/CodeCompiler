@@ -24,7 +24,7 @@ export default function SessionWarningModal({
     setLoading(true);
     setError(null);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost/api';
+      const apiUrl = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_API_URL) || 'http://localhost/api';
       const res = await fetch(`${apiUrl}/session/extend`, {
         method: 'POST',
         headers: {

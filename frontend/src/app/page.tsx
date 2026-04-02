@@ -61,18 +61,26 @@ export default function Home() {
   const [extensionCount, setExtensionCount] = useState(0);
 
   useEffect(() => {
-    let sid = localStorage.getItem('runly_session_id');
-    if (!sid) {
-      // crypto.randomUUID() requires HTTPS — fallback for HTTP
-      sid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-            const r = (Math.random() * 16) | 0;
-            return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-          });
-      localStorage.setItem('runly_session_id', sid);
+    try {
+      let sid = localStorage.getItem('runly_session_id');
+      if (!sid) {
+        // crypto.randomUUID() requires HTTPS — fallback for HTTP
+        sid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+              const r = (Math.random() * 16) | 0;
+              return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+            });
+        try { localStorage.setItem('runly_session_id', sid); } catch { /* Safari private mode */ }
+      }
+      setSessionId(sid);
+    } catch {
+      // localStorage blocked entirely (incognito/private)
+      setSessionId('xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+      }));
     }
-    setSessionId(sid);
   }, []);
 
   const currentLangConfig = languages.find((l: LanguageConfig) => l.id === currentLangId) as LanguageConfig;
@@ -200,14 +208,14 @@ export default function Home() {
 
   // Detect Monaco language from file extension for correct syntax highlighting
   const getEditorLanguage = (): string => {
-    if (!activeFileName) return currentLangConfig.monacoLanguage;
+    if (!activeFileName) return currentLangConfig?.monacoLanguage || 'plaintext';
     const ext = activeFileName.split('.').pop()?.toLowerCase();
     const extLangMap: Record<string, string> = {
       css: 'css', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
       html: 'html', json: 'json', md: 'markdown', py: 'python', vue: 'html',
       sql: 'sql', xml: 'xml', yaml: 'yaml', yml: 'yaml',
     };
-    return extLangMap[ext || ''] || currentLangConfig.monacoLanguage;
+    return extLangMap[ext || ''] || currentLangConfig?.monacoLanguage || 'plaintext';
   };
 
   if (loading || !currentLangConfig) {
@@ -265,7 +273,7 @@ export default function Home() {
 
       {/* === WORKSPACE === */}
       <div className="flex-1 flex overflow-hidden">
-        <PanelGroup direction={isMobile ? 'vertical' : 'horizontal'} autoSaveId={isMobile ? 'runly-v3-m' : 'runly-v3'}>
+        <PanelGroup direction={isMobile ? 'vertical' : 'horizontal'} autoSaveId={isMobile ? 'runly-v4-m' : 'runly-v4'}>
 
           {/* File Explorer - hidden on mobile */}
           {!isMobile && (
@@ -314,7 +322,7 @@ export default function Home() {
             {/* Editor */}
             <div className="flex-1 overflow-hidden">
               {isChatOpen ? (
-                <PanelGroup direction="horizontal" autoSaveId="runly-editor-chat">
+                <PanelGroup direction="horizontal" autoSaveId="runly-editor-chat-v2">
                   <Panel defaultSize={50} minSize={30} className="flex flex-col">
                     <CodeEditor
                       language={getEditorLanguage() as LanguageId}
