@@ -298,6 +298,43 @@ html, body {
 }
 
 /* Close button */
+.session-timer-display {
+  width: 280px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid #3b82f6;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+  user-select: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.session-timer-display.danger {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.session-timer-display.danger .timer-countdown {
+  color: var(--red-400);
+  animation: pulse-danger 2s infinite;
+}
+
+.timer-countdown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--amber-400);
+}
+
 .hc-close-btn {
   display: flex;
   align-items: center;

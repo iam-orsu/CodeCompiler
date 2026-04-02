@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Square, ChevronDown, Zap, Package, Search, Sparkles } from 'lucide-react';
+import { Play, Square, ChevronDown, Zap, Package, Search, Sparkles, Info, Database } from 'lucide-react';
 import { useLanguages } from '../../hooks/useLanguages';
 import { LanguageId, LanguageConfig } from '../../types';
 import { LIBRARIES } from '../../lib/marketplace';
@@ -19,6 +19,7 @@ interface EditorToolbarProps {
   onLibraryChange: (libs: string[]) => void;
   isChatOpen: boolean;
   onChatToggle: () => void;
+  sessionElement?: React.ReactNode;
 }
 
 const LIB_ICON: Record<string, string> = {
@@ -28,7 +29,7 @@ const LIB_ICON: Record<string, string> = {
 export default function EditorToolbar({
   language, onLanguageChange, onRun, onStop, isRunning,
   isWebMode, isSpecial, selectedLibraries, onLibraryChange,
-  isChatOpen, onChatToggle,
+  isChatOpen, onChatToggle, sessionElement
 }: EditorToolbarProps) {
   const { languages } = useLanguages();
   const [open, setOpen] = useState(false);
@@ -293,8 +294,28 @@ export default function EditorToolbar({
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2">
+          {sessionElement}
+          
+          {isSpecial && (
+            <div className="group relative">
+              <button className="flex items-center justify-center p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#27272a] transition-all">
+                <Info size={14} />
+              </button>
+              <div className="absolute right-0 top-[100%] mt-2 hidden group-hover:block z-50 w-[280px] bg-[#1a1a1e] border border-gray-700/50 rounded-lg shadow-2xl p-3 text-[11px] animate-fade-in" style={{ boxShadow: '0 20px 40px rgba(0,0,0,0.7)' }}>
+                <div className="font-semibold text-gray-200 mb-2 flex items-center gap-1.5 text-[12px]">
+                  <Database size={12} className="text-blue-400" /> Available Data
+                </div>
+                <div className="text-gray-400 space-y-2 leading-relaxed">
+                  <p><strong className="text-blue-300 font-medium tracking-wide">movies</strong><br/>title, language, genre, lead_actor, director, release_year, rating, box_office_cr</p>
+                  <p><strong className="text-blue-300 font-medium tracking-wide">actors</strong><br/>name, born_year, nationality</p>
+                  <div className="h-px w-full bg-gray-700/50 my-2"></div>
+                  <p className="text-[10px] text-gray-500 italic">Query these pre-loaded datasets alongside your own temporary tables.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <kbd className="hidden sm:flex items-center text-[10px] px-1.5 py-0.5 rounded"
                style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-primary)', color: 'var(--text-ghost)', fontFamily: "'JetBrains Mono', monospace" }}>
             Ctrl+Enter

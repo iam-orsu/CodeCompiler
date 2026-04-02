@@ -9,8 +9,10 @@ import logging
 import re
 from datetime import datetime, timezone
 
+from pydantic import BaseModel
 from pool import initialize_pool, cleanup_pool
 from executor import execute_code
+from session_db import init_session_db, close_session_db, get_db_limits, extend_session
 from chatbot import (
     ChatRequest,
     ChatResponse,
@@ -50,8 +52,13 @@ async def lifespan(app: FastAPI):
         await init_redis()
     except Exception as e:
         logger.warning(f"Chatbot Redis init failed (chat will be degraded): {e}")
+    try:
+        await init_session_db()
+    except Exception as e:
+        logger.warning(f"Session DB Redis init failed: {e}")
     yield
     # Shutdown
+    await close_session_db()
     await close_redis()
     await cleanup_pool()
 
@@ -64,10 +71,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class ExtendRequest(BaseModel):
+    session_id: str = None
+
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
 
+@app.get("/api/session/status")
+async def session_status(request: Request):
+    session_id = request.headers.get("x-session-id")
+    if not session_id:
+        return JSONResponse(status_code=400, content={"error": "Missing X-Session-ID header"})
+    limits = await get_db_limits(session_id)
+    return limits
+
+@app.post("/api/session/extend")
+async def session_extend(req: ExtendRequest, request: Request):
+    session_id = req.session_id or request.headers.get("x-session-id")
+    if not session_id:
+        return JSONResponse(status_code=400, content={"error": "Missing session_id"})
+    
+    success, msg, ttl = await extend_session(session_id)
+    if not success:
+        return JSONResponse(status_code=400, content={"error": msg})
+        
+    return {"success": True, "message": msg, "new_remaining_time": ttl}
 
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest, request: Request):
@@ -138,13 +168,14 @@ async def websocket_execute(ws: WebSocket):
         data = json.loads(msg)
         lang = data.get("language")
         code = data.get("code")
+        session_id = data.get("session_id")
 
         if not lang or not code:
             await ws.send_json({"type": "stderr", "data": "Error: Missing parameter `language` or `code`"})
             await ws.close()
             return
             
-        await execute_code(ws, lang, code)
+        await execute_code(ws, lang, code, session_id)
     except WebSocketDisconnect:
         pass
     except json.JSONDecodeError:

@@ -14,6 +14,8 @@ import { XTerminalRef } from '../components/Terminal/XTerminal';
 import FileExplorer, { FileNode } from '../components/Explorer/FileExplorer';
 import HelpChat from '../components/Chat/HelpChat';
 import { Github } from 'lucide-react';
+import SessionTimerDisplay from '../components/Editor/SessionTimerDisplay';
+import SessionWarningModal from '../components/Editor/SessionWarningModal';
 
 const XTerminal = dynamic(() => import('../components/Terminal/XTerminal'), {
   ssr: false,
@@ -40,7 +42,23 @@ export default function Home() {
   const wsClientRef = useRef<RunlyWebSocket | null>(null);
   const terminalRef = useRef<XTerminalRef>(null);
 
+  const [sessionId, setSessionId] = useState<string>('');
+  const [isSessionExpired, setIsSessionExpired] = useState(false);
+  const [sessionRefreshTrigger, setSessionRefreshTrigger] = useState(0);
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const [extensionCount, setExtensionCount] = useState(0);
+
+  useEffect(() => {
+    let sid = localStorage.getItem('runly_session_id');
+    if (!sid) {
+      sid = crypto.randomUUID();
+      localStorage.setItem('runly_session_id', sid);
+    }
+    setSessionId(sid);
+  }, []);
+
   const currentLangConfig = languages.find((l: LanguageConfig) => l.id === currentLangId) as LanguageConfig;
+  const activeSessionId = sessionId && currentLangConfig?.isSpecial ? `${sessionId}_${currentLangId}` : sessionId;
 
   useEffect(() => {
     if (languages.length > 0) {
@@ -112,13 +130,17 @@ export default function Home() {
 
   const handleRun = useCallback(() => {
     if (!currentLangConfig || currentLangConfig.isWebMode) return;
+    if (currentLangConfig.isSpecial && isSessionExpired) {
+       terminalRef.current?.write(`\x1b[38;5;196mSession expired. Please refresh the page to start a new session.\x1b[0m\r\n`);
+       return;
+    }
     if (wsClientRef.current) wsClientRef.current.stop();
     terminalRef.current?.clear();
     setIsRunning(true);
     const ws = new RunlyWebSocket();
     wsClientRef.current = ws;
     ws.executeCode(
-      currentLangConfig.id, code,
+      currentLangConfig.id, code, activeSessionId,
       (data: string) => { terminalRef.current?.write(data.replace(/\n/g, '\r\n')); },
       (status: WsStatus) => {
         if (status.type === 'start') {
@@ -126,15 +148,18 @@ export default function Home() {
         } else if (status.type === 'exit') {
           terminalRef.current?.write(`\r\n\x1b[38;5;244m$ Process exited.\x1b[0m\r\n`);
           setIsRunning(false);
+          setSessionRefreshTrigger((prev: number) => prev + 1);
         } else if (status.type === 'error') {
           terminalRef.current?.write(`\r\n\x1b[38;5;196mConnection error.\x1b[0m\r\n`);
           setIsRunning(false);
+          setSessionRefreshTrigger((prev: number) => prev + 1);
         } else if (status.type === 'close') {
           setIsRunning(false);
+          setSessionRefreshTrigger((prev: number) => prev + 1);
         }
       }
     );
-  }, [currentLangConfig, code]);
+  }, [currentLangConfig, code, isSessionExpired, sessionId]);
 
   const handleStop = useCallback(() => {
     wsClientRef.current?.stop();
@@ -181,6 +206,17 @@ export default function Home() {
   return (
     <main className="flex flex-col h-screen w-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
       {/* === HEADER === */}
+      <SessionWarningModal
+        isOpen={showSessionModal}
+        onClose={() => setShowSessionModal(false)}
+        onExtend={() => {
+           setShowSessionModal(false);
+           setSessionRefreshTrigger((prev: number) => prev + 1);
+        }}
+        sessionId={activeSessionId}
+        extensionCount={extensionCount}
+      />
+
       <header className="h-[48px] flex items-center justify-between px-4 shrink-0 select-none"
         style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-primary)' }}>
         <div className="flex items-center gap-3">
@@ -229,6 +265,18 @@ export default function Home() {
               isWebMode={currentLangConfig.isWebMode} isSpecial={currentLangConfig.isSpecial}
               selectedLibraries={selectedLibraries} onLibraryChange={setSelectedLibraries}
               isChatOpen={isChatOpen} onChatToggle={() => setIsChatOpen(prev => !prev)}
+              sessionElement={
+                <SessionTimerDisplay 
+                  language={currentLangId}
+                  sessionId={activeSessionId}
+                  refreshTrigger={sessionRefreshTrigger}
+                  onStatusChange={setIsSessionExpired}
+                  onTimerWarning={(tc) => {
+                    setExtensionCount(tc);
+                    setShowSessionModal(true);
+                  }}
+                />
+              }
             />
             {/* Tab bar */}
             {activeFileName && (

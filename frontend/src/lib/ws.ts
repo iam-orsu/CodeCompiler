@@ -12,6 +12,7 @@ export class RunlyWebSocket {
   executeCode(
     language: string, 
     code: string, 
+    sessionId: string,
     onOutput: (data: string) => void, 
     onStatus: (status: WsStatus) => void
   ) {
@@ -28,7 +29,7 @@ export class RunlyWebSocket {
     this.ws.onopen = () => {
       this.isConnected = true;
       onStatus({ type: 'start' });
-      this.ws?.send(JSON.stringify({ language, code }));
+      this.ws?.send(JSON.stringify({ language, code, session_id: sessionId }));
     };
 
     this.ws.onmessage = (event) => {
