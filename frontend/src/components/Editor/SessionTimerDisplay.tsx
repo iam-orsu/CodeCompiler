@@ -87,16 +87,17 @@ export default function SessionTimerDisplay({
   const inserts = status?.inserts || 0;
   
   const isMongo = language === 'mongodb';
-  const labelCreate = isMongo ? 'Collections' : 'Tables';
-  const labelInsert = 'Row Ops';
+  const labelCreate = isMongo ? 'Col' : 'Tbl';
 
   return (
     <div className={`session-timer-display ${isDanger ? 'danger' : ''}`}>
-      <div className="flex items-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
+      <div className="flex items-center gap-1.5 shrink-0">
         <Database size={12} className="text-blue-400 shrink-0" />
-        <span className="truncate">{labelCreate}: {creates}/5 | {labelInsert}: {inserts}/50</span>
+        <span>{labelCreate}: {creates}/5</span>
+        <span className="text-gray-600">|</span>
+        <span>Ops: {inserts}/50</span>
       </div>
-      <div className="text-gray-500 mx-1 shrink-0">|</div>
+      <div className="text-gray-600 mx-1 shrink-0">|</div>
       <div className="timer-countdown flex items-center gap-1 shrink-0">
         <Clock size={12} />
         {m}:{s}
