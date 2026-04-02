@@ -131,15 +131,15 @@ for tbl, count in pairs(new_inserts) do
 end
 
 -- Validate CREATE limit
-if current_creates + added_creates > 5 then
-    return {0, 'CREATE limit reached (5/5). Extend session or wait 1 hour.'}
+if current_creates + added_creates > 10 then
+    return {0, 'CREATE limit reached (10/10). Extend session or wait 1 hour.'}
 end
 
 -- Validate ROW OPS limit
 local proposed_row_ops = added_inserts + dyn_updates + dyn_deletes
-if current_row_ops + proposed_row_ops > 50 then
-    local remaining = math.max(0, 50 - current_row_ops)
-    return {0, 'Row operations limit reached (' .. (current_row_ops + proposed_row_ops) .. '/50). You only have ' .. remaining .. ' operations remaining.'}
+if current_row_ops + proposed_row_ops > 100 then
+    local remaining = math.max(0, 100 - current_row_ops)
+    return {0, 'Row operations limit reached (' .. (current_row_ops + proposed_row_ops) .. '/100). You only have ' .. remaining .. ' operations remaining.'}
 end
 
 -- Commit all changes atomically

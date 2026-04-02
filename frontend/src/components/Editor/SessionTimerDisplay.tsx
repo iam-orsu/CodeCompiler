@@ -102,9 +102,9 @@ export default function SessionTimerDisplay({
     <div className={`session-timer-display ${isDanger ? 'danger' : ''}`}>
       <div className="flex items-center gap-1.5 shrink-0">
         <Database size={12} className="text-blue-400 shrink-0" />
-        <span>{labelCreate}: {creates}/5</span>
+        <span>{labelCreate}: {creates}/10</span>
         <span className="text-gray-600">|</span>
-        <span>Ops: {inserts}/50</span>
+        <span>Ops: {inserts}/100</span>
       </div>
       <div className="text-gray-600 mx-1 shrink-0">|</div>
       <div className="timer-countdown flex items-center gap-1 shrink-0">
