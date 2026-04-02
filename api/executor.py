@@ -5,6 +5,7 @@ import io
 import re
 import time
 import os
+import socket
 import logging
 from fastapi import WebSocket, WebSocketDisconnect
 from pool import get_container, LANGUAGES
@@ -117,7 +118,7 @@ def rewrite_queries(session_id: str, code: str, lang: str) -> str:
                 return match.group(0)
             return f"db.{prefix}{identifier}.{method}"
             
-        pattern = r"db\.([a-zA-Z0-9_]+)\.(find|aggregate|insert|insertOne|insertMany|createCollection|update|updateOne|updateMany|delete|deleteOne|deleteMany|count|drop)"
+        pattern = r"db\.([a-zA-Z0-9_]+)\.(find|aggregate|insert|insertOne|insertMany|createCollection|update|updateOne|updateMany|delete|deleteOne|deleteMany|count|drop|replaceOne|findOneAndUpdate|findOneAndDelete|findOneAndReplace|bulkWrite|countDocuments|estimatedDocumentCount|distinct)"
         code = re.sub(pattern, mongo_repl, code)
         
         # Mongosh swallows cursor output in script mode. Auto-append print functions.
@@ -144,9 +145,10 @@ def rewrite_queries(session_id: str, code: str, lang: str) -> str:
                             break
                             
                 if end_idx != -1:
-                    after = tcode[end_idx+1:end_idx+15]
-                    # Skip if user is natively handling the cursor
-                    if not after.startswith(".toArray") and not after.startswith(".forEach") and not after.startswith(".pretty"):
+                    after = tcode[end_idx+1:].lstrip()
+                    # Skip if user is natively handling the cursor or chaining methods
+                    skip_prefixes = (".toArray", ".forEach", ".pretty", ".sort", ".limit", ".skip", ".count", ".map", ".filter", ".next", ".hasNext", ".explain")
+                    if not any(after.startswith(p) for p in skip_prefixes):
                         insertion = ".forEach(printjson)"
                         tcode = tcode[:end_idx+1] + insertion + tcode[end_idx+1:]
                         idx = end_idx + 1 + len(insertion)
@@ -164,6 +166,13 @@ def check_unsafe_queries(code: str, lang: str) -> tuple[bool, str]:
     if lang == "sqlite":
         if re.search(r"(?i)\b(UPDATE|DELETE\s+FROM)\s+(movies|actors)\b", code):
             return False, "Cannot modify pre-seeded tables (movies, actors). Create your own tables instead."
+        if re.search(r"(?i)\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(movies|actors)\b", code):
+            return False, "Cannot drop pre-seeded tables (movies, actors)."
+        # Block dangerous SQLite commands
+        if re.search(r"(?i)^\s*\.(shell|system|output|read|import)", code, re.MULTILINE):
+            return False, "SQLite dot-commands (.shell, .system, .output) are not allowed."
+        if re.search(r"(?i)\bATTACH\s+DATABASE\b", code):
+            return False, "ATTACH DATABASE is not allowed."
             
         stmts = re.split(r";", code)
         for stmt in stmts:
@@ -175,11 +184,14 @@ def check_unsafe_queries(code: str, lang: str) -> tuple[bool, str]:
             if (is_update or is_delete) and not re.search(r"(?i)\bWHERE\s+", stmt):
                 return False, "WHERE clause required for UPDATE and DELETE operations for safety."
     elif lang == "mongodb":
-        if re.search(r"db\.(movies|actors)\.(update|delete)", code):
-            return False, "Cannot modify pre-seeded tables (movies, actors). Create your own tables instead."
-            
-        if re.search(r"db\.[a-zA-Z0-9_]+\.deleteMany\(\s*(\{\s*\}|)\s*\)", code):
+        if re.search(r"db\.(movies|actors)\.(update|delete|drop|remove|replaceOne|findOneAndUpdate|findOneAndDelete|findOneAndReplace)", code, re.IGNORECASE):
+            return False, "Cannot modify pre-seeded collections (movies, actors). Create your own collections instead."
+        # Block deleteMany with empty filter or no args
+        if re.search(r"db\.[a-zA-Z0-9_]+\.deleteMany\(\s*(\{\s*\})?\s*\)", code):
             return False, "Filter required for deleteMany for safety."
+        # Block dangerous mongosh operations
+        if re.search(r"\b(require|load|cat|ls|pwd|hostname|db\.adminCommand|db\.getSiblingDB|db\.getMongo)\b", code):
+            return False, "This operation is not allowed in the sandbox."
     return True, ""
 
 def build_dry_run_code(code: str, lang: str) -> tuple[str, bool]:
@@ -199,8 +211,8 @@ def build_dry_run_code(code: str, lang: str) -> tuple[str, bool]:
                 return f"SELECT '{prefix}=' || (SELECT COUNT(*) FROM {table} WHERE {where_clause});\n{m.group(0)}"
             return m.group(0)
             
-        code = re.sub(r"(?i)\b(UPDATE)\s+([a-zA-Z0-9_]+)\s+(SET\s+.*?WHERE\s+.+?)(?:;|$)", sql_repl, code)
-        code = re.sub(r"(?i)\b(DELETE\s+FROM)\s+([a-zA-Z0-9_]+)\s+(WHERE\s+.+?)(?:;|$)", sql_repl, code)
+        code = re.sub(r"(?i)\b(UPDATE)\s+([a-zA-Z0-9_]+)\s+(SET\s+.*?WHERE\s+.+?)(?:;|$)", sql_repl, code, flags=re.DOTALL)
+        code = re.sub(r"(?i)\b(DELETE\s+FROM)\s+([a-zA-Z0-9_]+)\s+(WHERE\s+.+?)(?:;|$)", sql_repl, code, flags=re.DOTALL)
         
     elif lang == "mongodb":
         idx = 0
@@ -290,7 +302,7 @@ async def cleanup_container(container):
 
 async def run_headless_query(lang: str, dry_code: str) -> tuple[int, int]:
     try:
-        from .pool import get_container
+        from pool import get_container
         container = await get_container(lang)
     except Exception as e:
         logger.error(f"Failed to get container for dry run: {e}")
@@ -299,10 +311,11 @@ async def run_headless_query(lang: str, dry_code: str) -> tuple[int, int]:
     loop = asyncio.get_running_loop()
     filename = LANGUAGES[lang]
     tar_data = create_tar(filename, dry_code)
+    timeout = TIMEOUT_COMPILED if lang in EXTENDED_TIMEOUT_LANGS else TIMEOUT_INTERPRETED
     try:
         await loop.run_in_executor(None, lambda: container.put_archive("/code", tar_data))
         await loop.run_in_executor(None, container.start)
-        await loop.run_in_executor(None, container.wait)
+        await loop.run_in_executor(None, lambda: container.wait(timeout=timeout + 5))
         out = await loop.run_in_executor(None, lambda: container.logs(stdout=True, stderr=True))
         out_str = out.decode('utf-8', errors='replace')
         
@@ -414,7 +427,8 @@ async def execute_code(ws: WebSocket, lang: str, code: str, session_id: str = No
         logger.error(f"Container start failed for {lang}: {e}")
         await ws.send_json({"type": "stderr", "data": "Failed to start runner.\n"})
         try:
-            sock._sock.close()
+            raw_sock = getattr(sock, '_sock', sock)
+            raw_sock.close()
         except Exception:
             pass
         asyncio.create_task(cleanup_container(container))
@@ -426,10 +440,13 @@ async def execute_code(ws: WebSocket, lang: str, code: str, session_id: str = No
     async def read_from_container():
         def _read():
             try:
-                raw = sock._sock
+                raw = getattr(sock, '_sock', sock)
+                raw.settimeout(timeout + 5)  # Prevent infinite blocking
                 while True:
                     data = raw.recv(4096)
                     if not data:
+                        break
+                    if disconnect_event.is_set():
                         break
                     try:
                         future = asyncio.run_coroutine_threadsafe(
@@ -439,6 +456,8 @@ async def execute_code(ws: WebSocket, lang: str, code: str, session_id: str = No
                         future.result(timeout=5)
                     except Exception:
                         break  # WS closed or send failed
+            except (socket.timeout, OSError):
+                pass  # Socket timeout or closed — normal exit
             except Exception as e:
                 logger.debug(f"Read thread error: {e}")
 
@@ -450,7 +469,7 @@ async def execute_code(ws: WebSocket, lang: str, code: str, session_id: str = No
                 msg = await ws.receive_json()
                 if msg.get("type") == "stdin" and msg.get("data"):
                     raw = msg["data"].encode('utf-8')
-                    await loop.run_in_executor(None, lambda d=raw: sock._sock.sendall(d))
+                    await loop.run_in_executor(None, lambda d=raw: getattr(sock, '_sock', sock).sendall(d))
         except WebSocketDisconnect:
             disconnect_event.set()
         except (OSError, ConnectionError):
@@ -459,8 +478,8 @@ async def execute_code(ws: WebSocket, lang: str, code: str, session_id: str = No
             logger.debug(f"Write error: {e}")
 
     async def wait_for_exit():
-        # wait blocks synchronously until execution is done
-        return await loop.run_in_executor(None, container.wait)
+        # wait blocks synchronously until execution is done — add timeout to prevent thread pool exhaustion
+        return await loop.run_in_executor(None, lambda: container.wait(timeout=timeout + 5))
 
     async def wait_for_disconnect():
         await disconnect_event.wait()
@@ -496,14 +515,17 @@ async def execute_code(ws: WebSocket, lang: str, code: str, session_id: str = No
         disconnect_task.cancel()
         # Close the raw socket to prevent fd leaks
         try:
-            sock._sock.close()
+            raw_sock = getattr(sock, '_sock', sock)
+            raw_sock.close()
         except Exception:
             pass
         asyncio.create_task(cleanup_container(container))
         
-        try:
-            await ws.send_json({"type": "exit", "data": "Process exited"})
-            await ws.close()
-        except Exception:
-            pass
+        # Only send exit + close if client is still connected
+        if not disconnect_event.is_set():
+            try:
+                await ws.send_json({"type": "exit", "data": "Process exited"})
+                await ws.close()
+            except Exception:
+                pass
 

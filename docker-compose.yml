@@ -9,6 +9,8 @@ services:
       - runly-net
     env_file: .env
     restart: unless-stopped
+    mem_limit: 128m
+    cpus: 1.0
     depends_on:
       frontend:
         condition: service_started
@@ -23,6 +25,8 @@ services:
       - runly-net
     env_file: .env
     restart: unless-stopped
+    mem_limit: 512m
+    cpus: 2.0
 
   api:
     build:
@@ -34,6 +38,11 @@ services:
       - runly-net
     env_file: .env
     restart: unless-stopped
+    mem_limit: 1g
+    cpus: 4.0
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 10s
@@ -43,11 +52,13 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     networks:
       - runly-net
     env_file: .env
     restart: unless-stopped
+    mem_limit: 384m
+    cpus: 1.0
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

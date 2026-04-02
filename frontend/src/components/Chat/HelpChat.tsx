@@ -66,6 +66,10 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
   const sessionIdRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const codeRef = useRef(code);
+
+  // Keep code ref in sync without recreating callbacks
+  useEffect(() => { codeRef.current = code; }, [code]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -115,7 +119,7 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
       role: 'user',
       content: trimmed,
       timestamp: new Date().toISOString(),
-      codeSnapshot: code,
+      codeSnapshot: codeRef.current,
     };
     setMessages(prev => [...prev, userMsg]);
     if (!overrideMsg) setInput('');
@@ -129,7 +133,7 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
         body: JSON.stringify({
           language,
           user_message: trimmed,
-          code_attempted: code || undefined,
+          code_attempted: codeRef.current || undefined,
           session_id: sessionIdRef.current || undefined,
         }),
       });
@@ -160,7 +164,7 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
         content: data.response,
         timestamp: data.metadata?.timestamp || new Date().toISOString(),
         highlighted_lines: lines,
-        codeSnapshot: code,
+        codeSnapshot: codeRef.current,
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch {
@@ -168,7 +172,7 @@ export default function HelpChat({ isOpen, onClose, language, code, onHighlight 
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, language, code]);
+  }, [input, isLoading, language]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

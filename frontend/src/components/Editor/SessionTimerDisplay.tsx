@@ -57,13 +57,22 @@ export default function SessionTimerDisplay({
     fetchStatus();
   }, [fetchStatus, refreshTrigger]);
 
+  // Periodic re-sync with server every 60s to combat JS timer drift
+  useEffect(() => {
+    if (!isDb) return;
+    const syncInterval = setInterval(() => {
+      fetchStatus();
+    }, 60000);
+    return () => clearInterval(syncInterval);
+  }, [isDb, fetchStatus]);
+
   useEffect(() => {
     if (!isDb) return;
     
     const interval = setInterval(() => {
       setLocalSeconds(prev => {
         const next = Math.max(0, prev - 1);
-        if (next === 600 && !warningShown) {
+        if (next <= 600 && next > 598 && !warningShown) {
           setWarningShown(true);
           onTimerWarning(status?.extended_count || 0);
         }

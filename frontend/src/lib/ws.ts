@@ -16,9 +16,10 @@ export class RunlyWebSocket {
     onOutput: (data: string) => void, 
     onStatus: (status: WsStatus) => void
   ) {
-    if (this.ws) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.close();
     }
+    this.ws = null;
 
     const host = window.location.host;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -56,14 +57,16 @@ export class RunlyWebSocket {
   }
 
   sendInput(data: string) {
-    if (this.ws && this.isConnected) {
+    if (this.ws && this.isConnected && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'stdin', data }));
     }
   }
 
   stop() {
     if (this.ws) {
-      this.ws.close();
+      if (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING) {
+        this.ws.close();
+      }
       this.ws = null;
       this.isConnected = false;
     }

@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
+import re
 import redis.asyncio as aioredis
 from pydantic import BaseModel, Field
 
@@ -39,6 +40,23 @@ NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.1-70b-instruct")
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 CHAT_RATE_LIMIT = int(os.getenv("CHAT_RATE_LIMIT_PER_DAY", "40"))
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
+
+# Whitelist of valid language names for system prompt injection prevention
+VALID_LANGUAGES = {
+    "python", "javascript", "typescript", "c", "cpp", "c++",
+    "java", "go", "rust", "php", "r", "csharp", "c#",
+    "sqlite", "sql", "mongodb", "html", "css", "react",
+    "vue", "angular", "node.js", "node",
+}
+
+def _sanitize_language(lang: str) -> str:
+    """Sanitize language name to prevent prompt injection via .format()."""
+    clean = lang.strip().lower()
+    if clean in VALID_LANGUAGES:
+        return lang.strip()  # Return original casing if valid
+    # Fallback: strip anything dangerous, cap at 20 chars
+    sanitized = re.sub(r'[^a-zA-Z0-9.#+\s]', '', lang)[:20]
+    return sanitized if sanitized else "unknown"
 
 # ---------------------------------------------------------------------------
 # System Prompt (STRICT: zero code generation)
@@ -238,7 +256,7 @@ async def chat_with_nvidia(
 
     # Build messages array
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT.format(language=language)},
+        {"role": "system", "content": SYSTEM_PROMPT.format(language=_sanitize_language(language))},
     ]
 
     # Inject recent conversation history for continuity
@@ -286,7 +304,13 @@ async def chat_with_nvidia(
             return "The AI Tutor is temporarily unavailable. Please try again in a moment."
 
         data = resp.json()
-        ai_text = data["choices"][0]["message"]["content"].strip()
+        choices = data.get("choices", [])
+        if not choices:
+            logger.error(f"NVIDIA API returned empty choices: {resp.text[:200]}")
+            return "The AI Tutor received an unexpected response. Please try again."
+        ai_text = choices[0].get("message", {}).get("content", "").strip()
+        if not ai_text:
+            return "The AI Tutor returned an empty response. Please try again."
         return ai_text
 
     except httpx.TimeoutException:

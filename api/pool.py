@@ -56,9 +56,9 @@ ULIMITS = [
 ]
 
 pool = {lang: asyncio.Queue() for lang in LANGUAGES}
-_replenish_active = {lang: False for lang in LANGUAGES}
+_replenish_lock = {lang: asyncio.Lock() for lang in LANGUAGES}
 # Limit concurrent on-the-fly container creation per language
-MAX_ON_THE_FLY = 5
+MAX_ON_THE_FLY = int(os.getenv("MAX_ON_THE_FLY", "2"))
 _on_the_fly_sem = {lang: asyncio.Semaphore(MAX_ON_THE_FLY) for lang in LANGUAGES}
 
 # Default tmpfs for all languages
@@ -111,10 +111,9 @@ async def replenish_lang(lang: str, boot: bool = False):
     Fills the pool for a specific language.
     If boot=True, it will not loop if an image is missing to prevent startup deadlock.
     """
-    if _replenish_active[lang] and not boot:
+    if _replenish_lock[lang].locked() and not boot:
         return  # Another replenish task is already running for this language
-    _replenish_active[lang] = True
-    try:
+    async with _replenish_lock[lang]:
         while pool[lang].qsize() < POOL_SIZE:
             try:
                 container = await create_container_async(lang)
@@ -123,8 +122,6 @@ async def replenish_lang(lang: str, boot: bool = False):
                 logger.error(f"Failed forming {lang} pre-warm: {e}")
                 if boot: break  # Don't hang the entire API if one image is missing
                 await asyncio.sleep(5)  # Increase sleep to reduce log spam
-    finally:
-        _replenish_active[lang] = False
 
 async def replenish_task():
     while True:

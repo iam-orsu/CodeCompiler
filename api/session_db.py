@@ -1,4 +1,5 @@
 import os
+import json
 import redis.asyncio as redis
 from datetime import datetime, timezone
 
@@ -18,7 +19,178 @@ async def close_session_db():
     if redis_client:
         await redis_client.aclose()
 
+# ---------------------------------------------------------------------------
+# Lua Scripts — All quota operations are ATOMIC (no race conditions)
+# ---------------------------------------------------------------------------
+
+# Lua: init_session — HSETNX-style to avoid overwriting existing session
+_LUA_INIT_SESSION = """
+local key = KEYS[1]
+local ttl = tonumber(ARGV[1])
+local now = tonumber(ARGV[2])
+
+if redis.call('EXISTS', key) == 1 then
+    return 0
+end
+
+redis.call('HSET', key,
+    'creates', 0,
+    'inserts', 0,
+    'updates', 0,
+    'deletes', 0,
+    'created_at', now,
+    'extended_count', 0,
+    'last_extended_at', now,
+    'tracked_tables', '[]',
+    'tracked_inserts', '{}'
+)
+redis.call('EXPIRE', key, ttl)
+return 1
+"""
+
+# Lua: extend_session — atomic check-and-extend
+_LUA_EXTEND_SESSION = """
+local key = KEYS[1]
+local ttl = tonumber(ARGV[1])
+local now = tonumber(ARGV[2])
+
+if redis.call('EXISTS', key) == 0 then
+    return {0, 'Session expired. Refresh page to start new session.', 0}
+end
+
+local ext_count = tonumber(redis.call('HGET', key, 'extended_count') or '0')
+if ext_count >= 5 then
+    return {0, 'Max session duration reached (6 hours). Please refresh the page.', 0}
+end
+
+redis.call('HSET', key,
+    'creates', 0,
+    'inserts', 0,
+    'updates', 0,
+    'deletes', 0,
+    'extended_count', ext_count + 1,
+    'last_extended_at', now,
+    'tracked_tables', '[]',
+    'tracked_inserts', '{}'
+)
+redis.call('EXPIRE', key, ttl)
+return {1, 'Session extended successfully', ttl}
+"""
+
+# Lua: check_and_commit_limits — atomic read-validate-write
+_LUA_COMMIT_LIMITS = """
+local key = KEYS[1]
+local new_tables_json = ARGV[1]
+local new_inserts_json = ARGV[2]
+local dyn_updates = tonumber(ARGV[3])
+local dyn_deletes = tonumber(ARGV[4])
+
+if redis.call('EXISTS', key) == 0 then
+    return {0, 'Session expired. Refresh page to start new session.'}
+end
+
+local current_creates = tonumber(redis.call('HGET', key, 'creates') or '0')
+local current_inserts = tonumber(redis.call('HGET', key, 'inserts') or '0')
+local current_updates = tonumber(redis.call('HGET', key, 'updates') or '0')
+local current_deletes = tonumber(redis.call('HGET', key, 'deletes') or '0')
+local current_row_ops = current_inserts + current_updates + current_deletes
+
+local tracked_tables_raw = redis.call('HGET', key, 'tracked_tables') or '[]'
+local tracked_inserts_raw = redis.call('HGET', key, 'tracked_inserts') or '{}'
+
+-- Decode JSON using cjson
+local tracked_tables_set = {}
+local tracked_tables_list = cjson.decode(tracked_tables_raw)
+for _, t in ipairs(tracked_tables_list) do
+    tracked_tables_set[t] = true
+end
+
+local tracked_inserts = cjson.decode(tracked_inserts_raw)
+local new_tables = cjson.decode(new_tables_json)
+local new_inserts = cjson.decode(new_inserts_json)
+
+-- Count actually new tables
+local added_creates = 0
+local actual_new = {}
+for _, tbl in ipairs(new_tables) do
+    if not tracked_tables_set[tbl] then
+        added_creates = added_creates + 1
+        tracked_tables_set[tbl] = true
+        table.insert(actual_new, tbl)
+    end
+end
+
+-- Count added inserts (delta over previously tracked)
+local added_inserts = 0
+for tbl, count in pairs(new_inserts) do
+    local prev = tracked_inserts[tbl] or 0
+    if count > prev then
+        added_inserts = added_inserts + (count - prev)
+        tracked_inserts[tbl] = count
+    end
+end
+
+-- Validate CREATE limit
+if current_creates + added_creates > 5 then
+    return {0, 'CREATE limit reached (5/5). Extend session or wait 1 hour.'}
+end
+
+-- Validate ROW OPS limit
+local proposed_row_ops = added_inserts + dyn_updates + dyn_deletes
+if current_row_ops + proposed_row_ops > 50 then
+    local remaining = math.max(0, 50 - current_row_ops)
+    return {0, 'Row operations limit reached (' .. (current_row_ops + proposed_row_ops) .. '/50). You only have ' .. remaining .. ' operations remaining.'}
+end
+
+-- Commit all changes atomically
+if added_creates > 0 then
+    -- Merge actual_new into tracked_tables_list
+    for _, tbl in ipairs(actual_new) do
+        table.insert(tracked_tables_list, tbl)
+    end
+    redis.call('HSET', key, 'tracked_tables', cjson.encode(tracked_tables_list))
+    redis.call('HINCRBY', key, 'creates', added_creates)
+end
+
+if added_inserts > 0 then
+    redis.call('HSET', key, 'tracked_inserts', cjson.encode(tracked_inserts))
+    redis.call('HINCRBY', key, 'inserts', added_inserts)
+end
+
+if dyn_updates > 0 then
+    redis.call('HINCRBY', key, 'updates', dyn_updates)
+end
+
+if dyn_deletes > 0 then
+    redis.call('HINCRBY', key, 'deletes', dyn_deletes)
+end
+
+return {1, ''}
+"""
+
+# Script objects (loaded lazily)
+_script_init = None
+_script_extend = None
+_script_commit = None
+
+async def _get_scripts():
+    global _script_init, _script_extend, _script_commit
+    if not redis_client:
+        raise RuntimeError("Redis client not initialized")
+    if _script_init is None:
+        _script_init = redis_client.register_script(_LUA_INIT_SESSION)
+        _script_extend = redis_client.register_script(_LUA_EXTEND_SESSION)
+        _script_commit = redis_client.register_script(_LUA_COMMIT_LIMITS)
+    return _script_init, _script_extend, _script_commit
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 async def get_db_limits(session_id: str) -> dict:
+    if not redis_client:
+        return {"creates": 0, "inserts": 0, "extended_count": 0, "remaining_time": 0, "expired": True}
+    
     key = f"temp_session:{session_id}"
     data = await redis_client.hgetall(key)
     
@@ -45,119 +217,70 @@ async def get_db_limits(session_id: str) -> dict:
     
     return {
         "creates": int(data.get("creates", 0)),
-        "inserts": current_inserts + current_updates + current_deletes, # Summed for frontend simplicity
+        "inserts": current_inserts + current_updates + current_deletes,  # Summed for frontend simplicity
         "extended_count": int(data.get("extended_count", 0)),
         "remaining_time": ttl if ttl > 0 else 0,
         "expired": ttl <= 0
     }
 
 async def validate_session(session_id: str) -> bool:
+    if not redis_client:
+        return False
     key = f"temp_session:{session_id}"
     exists = await redis_client.exists(key)
     return bool(exists)
 
 async def init_session(session_id: str) -> bool:
+    if not redis_client:
+        return False
     key = f"temp_session:{session_id}"
-    exists = await redis_client.exists(key)
-    if not exists:
-        now = int(datetime.now(timezone.utc).timestamp())
-        await redis_client.hset(key, mapping={
-            "creates": 0,
-            "inserts": 0,
-            "updates": 0,
-            "deletes": 0,
-            "created_at": now,
-            "extended_count": 0,
-            "last_extended_at": now,
-            "tracked_tables": "[]",
-            "tracked_inserts": "{}"
-        })
-        await redis_client.expire(key, SESSION_TTL)
+    now = int(datetime.now(timezone.utc).timestamp())
+    
+    script_init, _, _ = await _get_scripts()
+    await script_init(keys=[key], args=[SESSION_TTL, now])
     return True
 
 async def extend_session(session_id: str) -> tuple[bool, str, int]:
-    key = f"temp_session:{session_id}"
-    data = await redis_client.hgetall(key)
+    if not redis_client:
+        return False, "Redis unavailable.", 0
     
-    if not data:
-        return False, "Session expired. Refresh page to start new session.", 0
-        
-    extended_count = int(data.get("extended_count", 0))
-    if extended_count >= 5:
-        return False, "Max session duration reached (6 hours). Please refresh the page.", 0
-        
+    key = f"temp_session:{session_id}"
     now = int(datetime.now(timezone.utc).timestamp())
     
-    # Reset quotas and increment extension count
-    await redis_client.hset(key, mapping={
-        "creates": 0,
-        "inserts": 0,
-        "updates": 0,
-        "deletes": 0,
-        "extended_count": extended_count + 1,
-        "last_extended_at": now,
-        "tracked_tables": "[]",
-        "tracked_inserts": "{}"
-    })
+    _, script_ext, _ = await _get_scripts()
+    result = await script_ext(keys=[key], args=[SESSION_TTL, now])
     
-    # Refresh TTL
-    await redis_client.expire(key, SESSION_TTL)
+    success = bool(result[0])
+    msg = result[1] if isinstance(result[1], str) else result[1].decode() if hasattr(result[1], 'decode') else str(result[1])
+    ttl = int(result[2]) if len(result) > 2 else 0
     
-    return True, "Session extended successfully", SESSION_TTL
-
-import json
+    return success, msg, ttl
 
 async def check_and_commit_limits(session_id: str, new_tables: set, new_inserts: dict, dynamic_updates: int = 0, dynamic_deletes: int = 0) -> tuple[bool, str]:
+    if not redis_client:
+        return False, "Redis unavailable."
+    
     if not new_tables and not new_inserts and dynamic_updates == 0 and dynamic_deletes == 0:
         return True, ""
-        
+    
     key = f"temp_session:{session_id}"
-    data = await redis_client.hgetall(key)
     
-    if not data:
-        return False, "Session expired. Refresh page to start new session."
-        
-    current_creates = int(data.get("creates", 0))
-    current_inserts = int(data.get("inserts", 0))
-    current_updates = int(data.get("updates", 0))
-    current_deletes = int(data.get("deletes", 0))
-    current_row_ops = current_inserts + current_updates + current_deletes
+    # Convert set to sorted list for JSON serialization
+    tables_list = sorted(list(new_tables)) if new_tables else []
+    inserts_dict = new_inserts if new_inserts else {}
     
-    tracked_tables = set(json.loads(data.get("tracked_tables", "[]")))
-    tracked_inserts = dict(json.loads(data.get("tracked_inserts", "{}")))
+    _, _, script_commit = await _get_scripts()
+    result = await script_commit(
+        keys=[key],
+        args=[
+            json.dumps(tables_list),
+            json.dumps(inserts_dict),
+            dynamic_updates,
+            dynamic_deletes,
+        ]
+    )
     
-    actual_new_tables = new_tables - tracked_tables
-    added_creates = len(actual_new_tables)
+    success = bool(result[0])
+    msg = result[1] if isinstance(result[1], str) else result[1].decode() if hasattr(result[1], 'decode') else str(result[1])
     
-    added_inserts = 0
-    for tbl, count in new_inserts.items():
-        prev = tracked_inserts.get(tbl, 0)
-        if count > prev:
-            added_inserts += (count - prev)
-            tracked_inserts[tbl] = count
-            
-    if current_creates + added_creates > 5:
-        return False, "CREATE limit reached (5/5). Extend session or wait 1 hour."
-        
-    proposed_row_ops = added_inserts + dynamic_updates + dynamic_deletes
-    if current_row_ops + proposed_row_ops > 50:
-        return False, f"Row operations limit reached ({current_row_ops + proposed_row_ops}/50). You only have {max(0, 50 - current_row_ops)} operations remaining."
-        
-    # Commit
-    updates_map = {}
-    if added_creates > 0:
-        tracked_tables.update(actual_new_tables)
-        updates_map["tracked_tables"] = json.dumps(list(tracked_tables))
-        await redis_client.hincrby(key, "creates", added_creates)
-    if added_inserts > 0:
-        updates_map["tracked_inserts"] = json.dumps(tracked_inserts)
-        await redis_client.hincrby(key, "inserts", added_inserts)
-    if dynamic_updates > 0:
-        await redis_client.hincrby(key, "updates", dynamic_updates)
-    if dynamic_deletes > 0:
-        await redis_client.hincrby(key, "deletes", dynamic_deletes)
-        
-    if updates_map:
-        await redis_client.hset(key, mapping=updates_map)
-        
-    return True, ""
+    return success, msg
